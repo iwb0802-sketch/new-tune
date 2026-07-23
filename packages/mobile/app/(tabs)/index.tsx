@@ -9,6 +9,8 @@ import { useAudioAnalyzer } from "@/lib/dsp/audio";
 import { detectPitch } from "@/lib/dsp/pitch";
 import { frequencyToKey, centsBetween, keyToNoteName } from "@/lib/dsp/notes";
 import { TunerMeter } from "@/components/TunerMeter";
+import { StrobeDisplay } from "@/components/StrobeDisplay";
+import { PianoKeyboard } from "@/components/PianoKeyboard";
 import { statusColor, statusLabel } from "@/lib/status";
 
 interface Reading {
@@ -86,13 +88,32 @@ export default function TunerScreen() {
           </Text>
         </View>
 
-        {/* Meter */}
+        {/* Strobe (Reyburn-style rotating phase wheel) */}
         <View style={[styles.meterCard, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
-          <TunerMeter cents={cents} active={active} width={300} />
+          <StrobeDisplay cents={cents} active={active} size={250} />
           <Text style={[styles.centsBig, { color }]}>
             {active && cents != null ? `${cents > 0 ? "+" : ""}${cents.toFixed(1)}` : "––.–"}
             <Text style={[styles.centsUnit, { color: colors.mutedForeground }]}>  cents</Text>
           </Text>
+          <Text style={[styles.strobeHint, { color: colors.mutedForeground }]}>
+            {active
+              ? Math.abs(cents ?? 0) <= 1
+                ? "정지 = 정확히 맞음"
+                : (cents ?? 0) > 0
+                  ? "시계방향 회전 → 음이 높음(♯)"
+                  : "반시계방향 회전 → 음이 낮음(♭)"
+              : "휠이 멈추면 정확히 맞은 것"}
+          </Text>
+        </View>
+
+        {/* Fine-tune needle (secondary) */}
+        <View style={[styles.meterCard, { backgroundColor: colors.card, borderColor: colors.border, paddingTop: 14 }]}>
+          <TunerMeter cents={cents} active={active} width={280} />
+        </View>
+
+        {/* Piano keyboard */}
+        <View style={[styles.keyboardCard, { backgroundColor: colors.cardElevated, borderColor: colors.border }]}>
+          <PianoKeyboard activeKey={active ? (reading?.keyIndex ?? null) : null} color={color} />
         </View>
 
         {/* Detail row */}
@@ -165,6 +186,14 @@ const styles = StyleSheet.create({
   },
   centsBig: { fontFamily: Fonts.monoBold, fontSize: 34 },
   centsUnit: { fontFamily: Fonts.mono, fontSize: 14 },
+  strobeHint: { fontFamily: Fonts.sans, fontSize: 12, marginTop: 2 },
+  keyboardCard: {
+    borderRadius: 16,
+    borderWidth: 1,
+    paddingVertical: 12,
+    paddingHorizontal: 10,
+    overflow: "hidden",
+  },
   detailRow: { flexDirection: "row", gap: 12 },
   detail: { flex: 1, borderRadius: 12, borderWidth: 1, padding: 12, gap: 4 },
   detailLabel: { fontFamily: Fonts.sans, fontSize: 11 },

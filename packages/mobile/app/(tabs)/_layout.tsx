@@ -33,6 +33,15 @@ export default function TabLayout() {
         }}
       />
       <Tabs.Screen
+        name="manual"
+        options={{
+          title: "수동",
+          tabBarIcon: ({ color, size, focused }) => (
+            <Ionicons name={focused ? "hand-left" : "hand-left-outline"} size={size} color={color} />
+          ),
+        }}
+      />
+      <Tabs.Screen
         name="measure"
         options={{
           title: "측정",

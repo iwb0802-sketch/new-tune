@@ -21,10 +21,15 @@ interface TuningState {
   measurements: Record<number, Measurement>;
   bCurve: number[];
   curve: CurvePoint[];
+  /** Per-key achieved deviation (cents from ET) recorded during manual tuning. */
+  tunedCents: Record<number, number>;
   setA4: (v: number) => void;
   setStyleId: (id: string) => void;
   addMeasurement: (m: Measurement) => void;
   removeMeasurement: (keyIndex: number) => void;
+  recordTuned: (keyIndex: number, cents: number) => void;
+  clearTuned: (keyIndex: number) => void;
+  resetTuned: () => void;
   resetAll: () => void;
 }
 
@@ -34,6 +39,7 @@ export function TuningProvider({ children }: { children: React.ReactNode }) {
   const [a4, setA4] = useState(DEFAULT_A4);
   const [styleId, setStyleId] = useState("4:2");
   const [measurements, setMeasurements] = useState<Record<number, Measurement>>({});
+  const [tunedCents, setTunedCents] = useState<Record<number, number>>({});
 
   const addMeasurement = useCallback((m: Measurement) => {
     setMeasurements((prev) => ({ ...prev, [m.keyIndex]: m }));
@@ -47,7 +53,24 @@ export function TuningProvider({ children }: { children: React.ReactNode }) {
     });
   }, []);
 
-  const resetAll = useCallback(() => setMeasurements({}), []);
+  const recordTuned = useCallback((keyIndex: number, cents: number) => {
+    setTunedCents((prev) => ({ ...prev, [keyIndex]: cents }));
+  }, []);
+
+  const clearTuned = useCallback((keyIndex: number) => {
+    setTunedCents((prev) => {
+      const next = { ...prev };
+      delete next[keyIndex];
+      return next;
+    });
+  }, []);
+
+  const resetTuned = useCallback(() => setTunedCents({}), []);
+
+  const resetAll = useCallback(() => {
+    setMeasurements({});
+    setTunedCents({});
+  }, []);
 
   const bCurve = useMemo(() => {
     const measured: MeasuredB[] = Object.values(measurements).map((m) => ({
@@ -69,13 +92,30 @@ export function TuningProvider({ children }: { children: React.ReactNode }) {
       measurements,
       bCurve,
       curve,
+      tunedCents,
       setA4,
       setStyleId,
       addMeasurement,
       removeMeasurement,
+      recordTuned,
+      clearTuned,
+      resetTuned,
       resetAll,
     }),
-    [a4, styleId, measurements, bCurve, curve, addMeasurement, removeMeasurement, resetAll],
+    [
+      a4,
+      styleId,
+      measurements,
+      bCurve,
+      curve,
+      tunedCents,
+      addMeasurement,
+      removeMeasurement,
+      recordTuned,
+      clearTuned,
+      resetTuned,
+      resetAll,
+    ],
   );
 
   return <TuningContext.Provider value={value}>{children}</TuningContext.Provider>;
