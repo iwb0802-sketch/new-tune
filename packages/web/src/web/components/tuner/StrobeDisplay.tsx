@@ -39,12 +39,16 @@ function ring(cx: number, cy: number, rOuter: number, rInner: number, segments: 
 export function StrobeDisplay({
   cents,
   active,
+  spinning,
   size = 260,
 }: {
   cents: number | null;
   active: boolean;
+  /** whether the wheel should keep rotating (live sound). Defaults to `active`. */
+  spinning?: boolean;
   size?: number;
 }) {
+  const spin = spinning ?? active;
   const cx = size / 2;
   const cy = size / 2;
   const rOuter = size * 0.46;
@@ -55,9 +59,9 @@ export function StrobeDisplay({
   const rotRef = useRef<SVGGElement>(null);
   const angle = useRef(0);
   const centsRef = useRef(0);
-  const activeRef = useRef(active);
+  const spinRef = useRef(spin);
   centsRef.current = cents ?? 0;
-  activeRef.current = active;
+  spinRef.current = spin;
 
   useEffect(() => {
     let raf: number;
@@ -66,7 +70,7 @@ export function StrobeDisplay({
       const now = Date.now();
       const dt = (now - last) / 1000;
       last = now;
-      if (activeRef.current) {
+      if (spinRef.current) {
         const v = Math.max(-MAX_SPEED, Math.min(MAX_SPEED, centsRef.current * DEG_PER_CENT));
         angle.current = (angle.current + v * dt) % 360;
         if (angle.current < 0) angle.current += 360;
