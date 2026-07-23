@@ -114,7 +114,16 @@
   * {
     @apply border-border outline-ring/50;
   }
+  html,
+  body,
+  #root {
+    min-height: 100dvh;
+  }
   body {
-    @apply bg-background text-foreground;
+    margin: 0;
+    background-color: #0b0d10;
+    color: #f2f4f7;
+    font-family: "Noto Sans KR", system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
   }
 }
