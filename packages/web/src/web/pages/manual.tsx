@@ -39,6 +39,7 @@ export default function ManualPage() {
   const [cursor, setCursor] = useState(0);
   const [auto, setAuto] = useState(true);
   const [live, setLive] = useState<Live | null>(null);
+  const [marker, setMarker] = useState<{ key: number; cents: number } | null>(null);
   const [fitView, setFitView] = useState(true);
   const [chartW, setChartW] = useState(340);
   const [saving, setSaving] = useState(false);
@@ -115,6 +116,7 @@ export default function ManualPage() {
 
       const { frequency, rms } = detectPitch(buffer, sampleRate);
       if (frequency <= 0 || rms < 0.004) {
+        // latch: keep last live marker on screen; only clear the readout state
         setLive(null);
         lockSince.current = null;
         return;
@@ -126,6 +128,12 @@ export default function ManualPage() {
       const centsFromET = centsBetween(frequency, point.fEqual);
 
       setLive({ freq: frequency, centsToTarget: smooth.current, centsFromET, onTargetKey });
+
+      // live chart marker positioned by the DETECTED key, cents relative to that key's ET
+      const detPoint = curve[detectedKey - 1];
+      if (detPoint) {
+        setMarker({ key: detectedKey, cents: centsBetween(frequency, detPoint.fEqual) });
+      }
 
       if (ctxRef.current.auto && onTargetKey && Math.abs(smooth.current) <= 1) {
         if (lockSince.current == null) lockSince.current = now;
@@ -142,6 +150,13 @@ export default function ManualPage() {
   );
 
   const { start, stop, running, error, supported } = useAudioAnalyzer(onFrame);
+
+  const stopAll = useCallback(() => {
+    stop();
+    setLive(null);
+    setMarker(null);
+    lockSince.current = null;
+  }, [stop]);
 
   const onTarget = running && live != null && live.onTargetKey;
   const cents = onTarget ? live!.centsToTarget : null;
@@ -293,6 +308,7 @@ export default function ManualPage() {
             curve={curve}
             currentKey={currentKey}
             tunedCents={tunedCents}
+            liveMarker={marker}
             fit={fitView}
             width={fitView ? chartW : 900}
           />
@@ -301,6 +317,7 @@ export default function ManualPage() {
           <Legend color={colors.foreground} label="허용범위(PT-100)" dim />
           <Legend color={colors.off} label="기준음(스트레치 중앙값)" />
           <Legend color={colors.primary} label="자동감지" />
+          <Legend color={colors.inTune} label="실시간 감지음(유지)" />
           <Legend color={colors.precision} label="A 옥타브" />
         </div>
       </div>
@@ -332,7 +349,7 @@ export default function ManualPage() {
       )}
 
       <div style={{ display: "flex", gap: 10 }}>
-        <button type="button" onClick={running ? stop : start} style={btn(running ? colors.off : colors.primary, "#FFF", { flex: 1 })}>
+        <button type="button" onClick={running ? stopAll : start} style={btn(running ? colors.off : colors.primary, "#FFF", { flex: 1 })}>
           {running ? <Square size={18} color="#FFF" fill="#FFF" /> : <Mic size={18} color="#FFF" />}
           {running ? "정지" : "마이크"}
         </button>

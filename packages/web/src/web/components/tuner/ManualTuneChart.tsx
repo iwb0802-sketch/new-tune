@@ -121,10 +121,12 @@ export const ManualTuneChart = forwardRef<
     curve: CurvePoint[];
     currentKey: number | null;
     tunedCents: Record<number, number>;
+    /** Real-time (latched) pitch marker: detected key + cents-from-ET. */
+    liveMarker?: { key: number; cents: number } | null;
     width?: number;
     fit?: boolean;
   }
->(function ManualTuneChart({ curve, currentKey, tunedCents, width = 360, fit = true }, ref) {
+>(function ManualTuneChart({ curve, currentKey, tunedCents, liveMarker, width = 360, fit = true }, ref) {
   useImperativeHandle(ref, () => ({
     capture: async () => captureWeb(colors.card),
   }));
@@ -266,6 +268,22 @@ export const ManualTuneChart = forwardRef<
               />
             );
           })}
+
+          {/* real-time (latched) live pitch marker */}
+          {liveMarker != null && liveMarker.key >= 1 && liveMarker.key <= NUM_KEYS && (() => {
+            const ki = liveMarker.key - 1;
+            const cx = xOf(ki);
+            const cy = yOf(liveMarker.cents);
+            const col = inBandIndex(ki, liveMarker.cents) ? colors.inTune : colors.warn;
+            return (
+              <g key="livemarker" opacity={0.95}>
+                <line x1={cx - 9} y1={cy} x2={cx + 9} y2={cy} stroke={col} strokeWidth={1.6} />
+                <line x1={cx} y1={cy - 9} x2={cx} y2={cy + 9} stroke={col} strokeWidth={1.6} />
+                <circle cx={cx} cy={cy} r={6} fill="none" stroke={col} strokeWidth={2.2} />
+                <circle cx={cx} cy={cy} r={6} fill="none" stroke={colors.background} strokeWidth={0.8} />
+              </g>
+            );
+          })()}
 
           {/* bottom piano keyboard */}
           <g transform={`translate(0 ${KB_TOP})`}>
