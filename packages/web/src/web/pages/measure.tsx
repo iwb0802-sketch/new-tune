@@ -6,6 +6,7 @@ import { useAudioAnalyzer } from "../lib/audio";
 import { detectPitch } from "../lib/dsp/pitch";
 import { extractPartials } from "../lib/dsp/partials";
 import { fitInharmonicity } from "../lib/dsp/inharmonicity";
+import { estimateTwaFundamental } from "../lib/dsp/twa";
 import { REPRESENTATIVE_KEYS, keyToNoteName, keyToFrequency, frequencyToKey } from "../lib/dsp/notes";
 
 const STABLE_FRAMES_TO_CAPTURE = 4;
@@ -65,8 +66,16 @@ export default function MeasurePage() {
         stableCount.current = 0;
         return;
       }
-      const key = frequencyToKey(frequency, a4);
-      setLive({ note: keyToNoteName(key), freq: frequency });
+      // TWA-refined fundamental for KEY DETECTION only. Raw YIN mis-octaves weak
+      // bass tones (e.g. A0), snapping detection to A1; the partial-weighted TWA
+      // estimate lands on the true fundamental so the correct key is recognised.
+      // (The B coefficient itself is still fit by fitInharmonicity in doFit.)
+      const selKey = selectedRef.current;
+      const bGuess = bCurve[selKey - 1] ?? 0;
+      const twa = estimateTwaFundamental(buffer, sr, frequency, bGuess, 10);
+      const f1 = twa ? twa.f1 : frequency;
+      const key = frequencyToKey(f1, a4);
+      setLive({ note: keyToNoteName(key), freq: f1 });
 
       if (capturingRef.current) {
         const expected = selectedRef.current;
