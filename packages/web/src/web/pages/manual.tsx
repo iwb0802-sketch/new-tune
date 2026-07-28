@@ -4,6 +4,7 @@ import { colors, Fonts } from "../lib/theme";
 import { useTuning } from "../lib/tuning-store";
 import { useAudioAnalyzer } from "../lib/audio";
 import { detectPitch } from "../lib/dsp/pitch";
+import { estimateTwaFundamental } from "../lib/dsp/twa";
 import { frequencyToKey, centsBetween, keyToNoteName } from "../lib/dsp/notes";
 import { StrobeDisplay } from "../components/tuner/StrobeDisplay";
 import { ManualTuneChart, toleranceFor, type ManualChartHandle } from "../components/tuner/ManualTuneChart";
@@ -30,6 +31,8 @@ interface Live {
   centsToTarget: number;
   centsFromET: number;
   onTargetKey: boolean;
+  twaSpread: number | null; // weighted partial spread in cents (null = TWA not used)
+  twaPartials: number; // number of partials TWA averaged
 }
 
 export default function ManualPage() {
@@ -121,18 +124,33 @@ export default function ManualPage() {
         lockSince.current = null;
         return;
       }
-      const detectedKey = frequencyToKey(frequency, a4);
-      const onTargetKey = detectedKey === key;
-      const rawToTarget = centsBetween(frequency, point.fTuned);
-      smooth.current = smooth.current * 0.6 + rawToTarget * 0.4;
-      const centsFromET = centsBetween(frequency, point.fEqual);
 
-      setLive({ freq: frequency, centsToTarget: smooth.current, centsFromET, onTargetKey });
+      // TWA: refine the raw YIN fundamental into a partial-weighted effective
+      // fundamental (magnitude x loudness, inharmonicity-corrected). This is the
+      // pitch a tuner's ear actually settles on. Falls back to raw f1 if the
+      // partials are too sparse (e.g. very soft or noisy tone).
+      const twa = estimateTwaFundamental(buffer, sampleRate, frequency, point.B ?? 0, 6);
+      const f1 = twa ? twa.f1 : frequency;
+
+      const detectedKey = frequencyToKey(f1, a4);
+      const onTargetKey = detectedKey === key;
+      const rawToTarget = centsBetween(f1, point.fTuned);
+      smooth.current = smooth.current * 0.6 + rawToTarget * 0.4;
+      const centsFromET = centsBetween(f1, point.fEqual);
+
+      setLive({
+        freq: f1,
+        centsToTarget: smooth.current,
+        centsFromET,
+        onTargetKey,
+        twaSpread: twa ? twa.spread : null,
+        twaPartials: twa ? twa.partialsUsed : 0,
+      });
 
       // live chart marker positioned by the DETECTED key, cents relative to that key's ET
       const detPoint = curve[detectedKey - 1];
       if (detPoint) {
-        setMarker({ key: detectedKey, cents: centsBetween(frequency, detPoint.fEqual) });
+        setMarker({ key: detectedKey, cents: centsBetween(f1, detPoint.fEqual) });
       }
 
       if (ctxRef.current.auto && onTargetKey && Math.abs(smooth.current) <= 1) {
@@ -262,7 +280,14 @@ export default function ManualPage() {
           <span style={{ fontFamily: Fonts.sans, fontSize: 11, color: colors.mutedForeground }}>
             목표 {target ? target.fTuned.toFixed(2) : "—"} Hz · 스트레치 {target ? `${target.cents > 0 ? "+" : ""}${target.cents.toFixed(1)}¢` : "—"}
           </span>
-          <span style={{ fontFamily: Fonts.sans, fontSize: 11, color: colors.mutedForeground }}>허용 ±{tol.toFixed(1)}¢</span>
+          <span style={{ fontFamily: Fonts.sans, fontSize: 11, color: colors.mutedForeground }}>
+            허용 ±{tol.toFixed(1)}¢
+            {onTarget && live?.twaSpread != null && (
+              <span style={{ color: colors.precision }}>
+                {"  ·  "}TWA {live.twaPartials}배음 ±{live.twaSpread.toFixed(1)}¢
+              </span>
+            )}
+          </span>
         </div>
       </div>
 
