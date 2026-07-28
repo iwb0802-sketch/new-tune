@@ -4,6 +4,7 @@ import { colors, Fonts } from "../lib/theme";
 import { useTuning } from "../lib/tuning-store";
 import { useAudioAnalyzer } from "../lib/audio";
 import { detectPitch } from "../lib/dsp/pitch";
+import { estimateTwaFundamental } from "../lib/dsp/twa";
 import { frequencyToKey, centsBetween, keyToNoteName } from "../lib/dsp/notes";
 import { TunerMeter } from "../components/tuner/TunerMeter";
 import { StrobeDisplay } from "../components/tuner/StrobeDisplay";
@@ -49,11 +50,21 @@ export default function TunerPage() {
         setLive(false);
         return;
       }
-      const keyIndex = frequencyToKey(frequency, a4);
+      // TWA: use the measured B curve to refine the raw YIN fundamental into the
+      // partial-weighted effective pitch (inharmonicity-corrected). First pass a
+      // provisional key from the raw frequency to look up its B, then re-derive
+      // the key from the refined f1 so bass notes (large inharmonicity) don't get
+      // mis-recognized by an octave. Falls back to raw f1 when partials are sparse.
+      const provKey = frequencyToKey(frequency, a4);
+      const bGuess = curveRef.current[provKey - 1]?.B ?? 0;
+      const twa = estimateTwaFundamental(buffer, sampleRate, frequency, bGuess, 10);
+      const f1 = twa ? twa.f1 : frequency;
+
+      const keyIndex = frequencyToKey(f1, a4);
       const point = curveRef.current[keyIndex - 1];
-      const target = point?.fTuned ?? frequency;
+      const target = point?.fTuned ?? f1;
       const targetCents = point?.cents ?? 0;
-      const rawCents = centsBetween(frequency, target);
+      const rawCents = centsBetween(f1, target);
       // Reset the smoothing when a fresh note starts (after silence or a note change)
       // so the meter snaps to the new note instead of sweeping from the old one.
       if (!wasLive.current || lastKey.current !== keyIndex) {
@@ -65,7 +76,7 @@ export default function TunerPage() {
       lastKey.current = keyIndex;
       setLive(true);
       setReading({
-        freq: frequency,
+        freq: f1,
         keyIndex,
         note: keyToNoteName(keyIndex),
         target,
