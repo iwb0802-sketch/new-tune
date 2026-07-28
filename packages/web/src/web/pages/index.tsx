@@ -92,81 +92,71 @@ export default function TunerPage() {
   const color = active && cents != null ? statusColor(cents, colors) : colors.mutedForeground;
 
   return (
-    <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 18 }}>
-      <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
-        <span style={{ fontFamily: Fonts.mono, fontSize: 11, letterSpacing: 2, color: colors.mutedForeground }}>
-          PIANO TUNING SCOPE
-        </span>
-        <h1 style={{ fontFamily: Fonts.sansBold, fontWeight: 700, fontSize: 24, color: colors.foreground, margin: 0 }}>
+    <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ display: "flex", alignItems: "baseline", justifyContent: "space-between" }}>
+        <h1 style={{ fontFamily: Fonts.sansBold, fontWeight: 700, fontSize: 20, color: colors.foreground, margin: 0 }}>
           실시간 튜너
         </h1>
+        <span style={{ fontFamily: Fonts.mono, fontSize: 10, letterSpacing: 1.5, color: colors.mutedForeground }}>
+          {styleId} · A4 {a4}Hz
+        </span>
       </div>
 
-      {/* Note readout */}
-      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 2, marginTop: 4 }}>
-        <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 64, lineHeight: "72px", color: active ? color : colors.mutedForeground }}>
-          {reading?.note ?? "—"}
-        </span>
-        <span style={{ fontFamily: Fonts.sansMedium, fontWeight: 500, fontSize: 15, color }}>
-          {active && cents != null
-            ? live
-              ? statusLabel(cents)
-              : `${statusLabel(cents)} · 유지됨`
-            : running
-              ? "소리를 감지하는 중…"
-              : "정지됨"}
-        </span>
-        {active && !live && (
-          <span
-            style={{
-              fontFamily: Fonts.mono,
-              fontSize: 10,
-              letterSpacing: 1.5,
-              color: colors.mutedForeground,
-              border: `1px solid ${colors.border}`,
-              borderRadius: 999,
-              padding: "2px 8px",
-              marginTop: 2,
-            }}
-          >
-            HOLD · 마지막 감지음
-          </span>
-        )}
-      </div>
-
-      {/* Strobe */}
-      <Card elevated align>
-        <StrobeDisplay cents={cents} active={active} spinning={live} size={250} />
-        <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 34, color }}>
-          {active && cents != null ? `${cents > 0 ? "+" : ""}${cents.toFixed(1)}` : "––.–"}
-          <span style={{ fontFamily: Fonts.mono, fontSize: 14, color: colors.mutedForeground }}>  cents</span>
-        </span>
-        <span style={{ fontFamily: Fonts.sans, fontSize: 12, color: colors.mutedForeground, textAlign: "center" }}>
-          {active
-            ? Math.abs(cents ?? 0) <= 1
-              ? "정지 = 정확히 맞음"
-              : (cents ?? 0) > 0
-                ? "시계방향 회전 → 음이 높음(♯)"
-                : "반시계방향 회전 → 음이 낮음(♭)"
-            : "휠이 멈추면 정확히 맞은 것"}
-        </span>
-      </Card>
-
-      {/* Fine-tune needle */}
-      <Card align style={{ paddingTop: 14 }}>
-        <TunerMeter cents={cents} active={active} width={280} />
+      {/* Main readout: strobe + note/cents side by side */}
+      <Card elevated style={{ paddingTop: 14, paddingBottom: 14, paddingLeft: 14, paddingRight: 14 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+          <StrobeDisplay cents={cents} active={active} spinning={live} size={150} />
+          <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
+            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
+              <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 46, lineHeight: "50px", color: active ? color : colors.mutedForeground }}>
+                {reading?.note ?? "—"}
+              </span>
+              {active && !live && (
+                <span
+                  style={{
+                    fontFamily: Fonts.mono,
+                    fontSize: 9,
+                    letterSpacing: 1,
+                    color: colors.mutedForeground,
+                    border: `1px solid ${colors.border}`,
+                    borderRadius: 999,
+                    padding: "2px 7px",
+                  }}
+                >
+                  HOLD
+                </span>
+              )}
+            </div>
+            <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 30, lineHeight: "34px", color }}>
+              {active && cents != null ? `${cents > 0 ? "+" : ""}${cents.toFixed(1)}` : "––.–"}
+              <span style={{ fontFamily: Fonts.mono, fontSize: 13, color: colors.mutedForeground }}> cents</span>
+            </span>
+            <span style={{ fontFamily: Fonts.sansMedium, fontWeight: 500, fontSize: 13, color }}>
+              {active && cents != null
+                ? live
+                  ? statusLabel(cents)
+                  : `${statusLabel(cents)} · 유지됨`
+                : running
+                  ? "소리를 감지하는 중…"
+                  : "정지됨"}
+            </span>
+          </div>
+        </div>
+        <div style={{ marginTop: 10, display: "flex", justifyContent: "center" }}>
+          <TunerMeter cents={cents} active={active} width={320} />
+        </div>
       </Card>
 
       {/* Piano keyboard */}
       <div
         style={{
-          borderRadius: 16,
+          borderRadius: 14,
           border: `1px solid ${colors.border}`,
           backgroundColor: colors.cardElevated,
-          paddingTop: 12,
-          paddingBottom: 12,
-          paddingLeft: 10,
-          paddingRight: 10,
+          paddingTop: 10,
+          paddingBottom: 10,
+          paddingLeft: 8,
+          paddingRight: 8,
           overflow: "hidden",
         }}
       >
@@ -174,16 +164,13 @@ export default function TunerPage() {
       </div>
 
       {/* Detail rows */}
-      <div style={{ display: "flex", gap: 12 }}>
+      <div style={{ display: "flex", gap: 8 }}>
         <Detail label="감지 주파수" value={reading ? `${reading.freq.toFixed(2)} Hz` : "— Hz"} />
+        <Detail label="목표 주파수" value={reading ? `${reading.target.toFixed(2)} Hz` : "— Hz"} />
         <Detail
-          label="목표 센트 (ET 대비)"
-          value={reading ? `${reading.targetCents > 0 ? "+" : ""}${reading.targetCents.toFixed(1)} c` : "— c"}
+          label="목표 센트(ET)"
+          value={reading ? `${reading.targetCents > 0 ? "+" : ""}${reading.targetCents.toFixed(1)}c` : "— c"}
         />
-      </div>
-      <div style={{ display: "flex", gap: 12 }}>
-        <Detail label="건반" value={reading ? `#${reading.keyIndex}` : "—"} />
-        <Detail label="스타일 · A4" value={`${styleId} · ${a4}Hz`} />
       </div>
 
       {error && <p style={{ fontFamily: Fonts.sans, fontSize: 13, textAlign: "center", color: colors.off, margin: 0 }}>{error}</p>}
@@ -201,12 +188,12 @@ export default function TunerPage() {
           alignItems: "center",
           justifyContent: "center",
           gap: 8,
-          paddingTop: 15,
-          paddingBottom: 15,
+          paddingTop: 13,
+          paddingBottom: 13,
           borderRadius: 14,
           border: "none",
           cursor: "pointer",
-          marginTop: 4,
+          marginTop: 2,
           backgroundColor: running ? colors.off : colors.primary,
           color: "#FFFFFF",
           fontFamily: Fonts.sansBold,
