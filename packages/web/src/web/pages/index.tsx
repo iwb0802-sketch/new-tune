@@ -15,6 +15,7 @@ interface Reading {
   keyIndex: number;
   note: string;
   target: number;
+  targetCents: number; // 목표 건반의 ET 대비 스트레치 센트(커브값)
   cents: number;
 }
 
@@ -51,6 +52,7 @@ export default function TunerPage() {
       const keyIndex = frequencyToKey(frequency, a4);
       const point = curveRef.current[keyIndex - 1];
       const target = point?.fTuned ?? frequency;
+      const targetCents = point?.cents ?? 0;
       const rawCents = centsBetween(frequency, target);
       // Reset the smoothing when a fresh note starts (after silence or a note change)
       // so the meter snaps to the new note instead of sweeping from the old one.
@@ -67,6 +69,7 @@ export default function TunerPage() {
         keyIndex,
         note: keyToNoteName(keyIndex),
         target,
+        targetCents,
         cents: smoothCents.current,
       });
     },
@@ -173,7 +176,10 @@ export default function TunerPage() {
       {/* Detail rows */}
       <div style={{ display: "flex", gap: 12 }}>
         <Detail label="감지 주파수" value={reading ? `${reading.freq.toFixed(2)} Hz` : "— Hz"} />
-        <Detail label="목표 주파수" value={reading ? `${reading.target.toFixed(2)} Hz` : "— Hz"} />
+        <Detail
+          label="목표 센트 (ET 대비)"
+          value={reading ? `${reading.targetCents > 0 ? "+" : ""}${reading.targetCents.toFixed(1)} c` : "— c"}
+        />
       </div>
       <div style={{ display: "flex", gap: 12 }}>
         <Detail label="건반" value={reading ? `#${reading.keyIndex}` : "—"} />
