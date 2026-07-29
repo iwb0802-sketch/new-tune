@@ -10,6 +10,8 @@ import { TunerMeter } from "../components/tuner/TunerMeter";
 import { StrobeDisplay } from "../components/tuner/StrobeDisplay";
 import { PianoKeyboard } from "../components/tuner/PianoKeyboard";
 import { statusColor, statusLabel } from "../lib/status";
+import { useAuth } from "../hooks/useAuth";
+import { useUserRole } from "../hooks/useUserRole";
 
 interface Reading {
   freq: number;
@@ -24,6 +26,8 @@ const ANALYZE_INTERVAL = 110; // ms
 
 export default function TunerPage() {
   const { a4, curve, styleId } = useTuning();
+  const { user } = useAuth();
+  const { isPro } = useUserRole(user?.id);
 
   // `reading` is LATCHED: it holds the last confirmed note and stays on screen
   // even after the sound fades, until a new note is played or the mic is stopped.
@@ -282,7 +286,9 @@ export default function TunerPage() {
 
       <button
         type="button"
-        onClick={running ? stopAll : start}
+        onClick={!isPro ? undefined : running ? stopAll : start}
+        disabled={!isPro}
+        title={!isPro ? "Pro 이상 등급에서 사용 가능합니다" : undefined}
         style={{
           display: "flex",
           alignItems: "center",
@@ -292,18 +298,31 @@ export default function TunerPage() {
           paddingBottom: 13,
           borderRadius: 14,
           border: "none",
-          cursor: "pointer",
+          cursor: isPro ? "pointer" : "not-allowed",
           marginTop: 2,
-          backgroundColor: running ? colors.off : colors.primary,
-          color: "#FFFFFF",
+          backgroundColor: !isPro ? colors.muted : running ? colors.off : colors.primary,
+          color: !isPro ? colors.mutedForeground : "#FFFFFF",
           fontFamily: Fonts.sansBold,
           fontWeight: 700,
           fontSize: 16,
         }}
       >
-        {running ? <Square size={20} color="#FFF" fill="#FFF" /> : <Mic size={20} color="#FFF" />}
-        {running ? "정지" : "마이크 시작"}
+        {!isPro ? "🔒 마이크 시작" : running ? <Square size={20} color="#FFF" fill="#FFF" /> : <Mic size={20} color="#FFF" />}
+        {isPro && (running ? "정지" : "마이크 시작")}
       </button>
+      {!isPro && (
+        <p
+          style={{
+            fontSize: 12,
+            textAlign: "center",
+            color: colors.mutedForeground,
+            fontFamily: Fonts.sans,
+            marginTop: 6,
+          }}
+        >
+          Pro 등급으로 변경하면 마이크를 사용할 수 있습니다.
+        </p>
+      )}
     </div>
   );
 }

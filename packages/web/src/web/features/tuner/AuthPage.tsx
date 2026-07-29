@@ -17,7 +17,7 @@ export default function AuthPage() {
 
   // 로그인되면 시험용(구버전) 페이지로 이동
   useEffect(() => {
-    if (user) navigate("/manual");
+    if (user) navigate("/");
   }, [user, navigate]);
 
   const [email, setEmail] = useState("");

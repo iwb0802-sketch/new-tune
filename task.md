@@ -27,3 +27,10 @@
 - build: (cd packages/web && bunx vite build)
 - push: source .git-push.env → git push https://x-access-token:${GITHUB_TOKEN}@github.com/iwb0802-sketch/new-tune.git main
 - deploy: POST vercel v13/deployments (project prj_ViHYuJaYnqJ0mPwpwg8mhGmfM1vM, repoId 1310046063)
+
+## ✅ 완료 (2026-07-29)
+- tsc/vite build clean, 런타임 콘솔 에러 0 (AuthPage useEffect/useLocation import 누락 수정)
+- orphan pages/manual.tsx 삭제
+- 커밋 d55b620, iwb0802-sketch/new-tune main 푸시 완료
+- Vercel dpl_3RbhALf7TcWXeyqUDLDe6uGJdgnj → READY
+- 프로덕션 new-tune-desktop.vercel.app /auth /manual /strobe-manual-2 모두 200

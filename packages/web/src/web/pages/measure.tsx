@@ -9,11 +9,15 @@ import { fitInharmonicity } from "../lib/dsp/inharmonicity";
 import { estimateTwaFundamental } from "../lib/dsp/twa";
 import { REPRESENTATIVE_KEYS, keyToNoteName, keyToFrequency, frequencyToKey } from "../lib/dsp/notes";
 import { PianoBar } from "../components/PianoBar";
+import { useAuth } from "../hooks/useAuth";
+import { useUserRole } from "../hooks/useUserRole";
 
 const STABLE_FRAMES_TO_CAPTURE = 4;
 
 export default function MeasurePage() {
   const { a4, bCurve, measurements, addMeasurement, removeMeasurement } = useTuning();
+  const { user } = useAuth();
+  const { isPro } = useUserRole(user?.id);
 
   const [selectedKey, setSelectedKey] = useState(REPRESENTATIVE_KEYS[0]);
   const [capturing, setCapturing] = useState(false);
@@ -220,11 +224,25 @@ export default function MeasurePage() {
               취소
             </button>
           </div>
-        ) : (
+        ) : isPro ? (
           <button type="button" onClick={startCapture} style={btn(colors.primary, "#FFF")}>
             <Activity size={18} color="#FFF" />
             측정 시작
           </button>
+        ) : (
+          <>
+            <button
+              type="button"
+              disabled
+              title="Pro 이상 등급에서 사용 가능합니다"
+              style={{ ...btn(colors.muted, colors.mutedForeground), cursor: "not-allowed" }}
+            >
+              🔒 측정 시작
+            </button>
+            <p style={{ fontSize: 12, textAlign: "center", color: colors.mutedForeground, fontFamily: Fonts.sans, marginTop: 6 }}>
+              Pro 등급으로 변경하면 마이크를 사용할 수 있습니다.
+            </p>
+          </>
         )}
 
         {measurements[selectedKey] && (
