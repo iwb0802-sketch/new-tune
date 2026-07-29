@@ -1,43 +1,29 @@
-# Piano Tuning Scope — build
+# 시험용 페이지 포팅 (newtun → managed stack) — B: 전체 1:1
 
-Reyburn CyberTuner 스타일 인하모니시티 기반 조율 앱 (모바일, expo). 웹 프리뷰 마이크(Web Audio).
+## 결정
+- 기존 Supabase 프로젝트 재연결 (anon key 공개, 소스에 있음) → 클라우드 세션/프로필/권한 데이터 유지
+- `/manual` 탭 라벨 수동→시험, 페이지를 StrobeManualPage(구버전)으로 교체
+- 신버전도 함께 포팅 → `/strobe-manual-2` 라우트 (페이지 간 상호 링크 유지)
+- `/auth` 라우트 추가 (AuthPage), 미로그인 시 시험페이지→/auth 리다이렉트
+- 라우터: @tanstack/react-router → wouter (navigate({to}) → navigate(), Link to→href)
 
-## Done
-- app_init, 폰트(Noto Sans KR, JetBrains Mono) 설치
-- design.md, constants/theme.ts (다크 계측기 팔레트 + 상태색)
-- DSP 코어: notes, fft, pitch(YIN+HPS), partials, inharmonicity(B회귀), interpolation(PCHIP), stretch(옥타브 캐스케이드)
-- lib/dsp/audio.ts (Web Audio 훅), lib/tuning-store.tsx (Context)
+## 새 npm deps (설치됨)
+- @supabase/supabase-js, sonner, @radix-ui/react-label
 
-## TODO
-- [ ] app.json: name/slug/bundleId, userInterfaceStyle dark
-- [ ] app/_layout.tsx: 폰트 로드 + TuningProvider
-- [ ] app/(tabs)/_layout.tsx: 탭 (튜너/측정/커브/설정)
-- [ ] components: TunerMeter, CurveChart, Segmented, StatCard
-- [ ] app/(tabs)/index.tsx (튜너)
-- [ ] app/(tabs)/measure.tsx
-- [ ] app/(tabs)/curve.tsx
-- [ ] app/(tabs)/settings.tsx
-- [ ] bun run dev:mobile (4300), lint, verify
-- [ ] deliver
+## 진행
+- [x] 소스 복사 (hooks, features/tuner, components/tuner, lib/tuner, integrations/supabase, ui: card/input/label/alert)
+- [x] StrobeManualPage2 복사
+- [ ] styles.css 커스텀 토큰 추가 (precision/in-tune/warn/off/strobe + soft/foreground)
+- [ ] StrobeManualPage 라우터 변환 + 미로그인 리다이렉트 /auth
+- [ ] StrobeManualPage2 라우터 변환
+- [ ] AuthPage 로그인 성공 시 /manual 리다이렉트 추가
+- [ ] app.tsx: 라우트 추가(/manual→구버전, /strobe-manual-2→신버전, /auth→AuthPage) + <Toaster/>
+- [ ] Layout.tsx: 수동→시험 라벨
+- [ ] tsc --noEmit + vite build 통과
+- [ ] commit/push/deploy (Vercel) + READY 확인
 
-## Notes
-- 상태색: |c|<=1 inTune, <=5 warn, else off
-- 중앙 옥타브(key44-55) ET 앵커, 옥타브비 캐스케이드로 스트레치
-- 수치는 전부 JetBrains Mono
-
-## FINAL STATUS — DONE
-- konsistent.json fixed (ErrorBoundary import rule typo → __ErrorBoundary)
-- oxlint crash fixed via `sudo sysctl -w vm.overcommit_memory=1`
-- Fixed 5 lint errors: new Array→Array.from (stretch.ts x2, interpolation.ts), stop circular dep via stopRef (measure.tsx), removed unused `running`
-- typecheck: clean | lint: 0 warnings 0 errors | web bundle: 200, 4.8MB, no resolve errors
-- DSP verified end-to-end: B fit exact, 88-key interpolation valid, stretch curve realistic (bass -4.3¢, A4 0¢, treble +21.9¢)
-- Dev server running on :4300, delivered
-
-
----
-## FINAL STATUS (verified)
-- lint clean (konsistent 17 files, oxlint 0 warnings/errors)
-- typecheck clean (tsc --noEmit)
-- dev server running on port 4300
-- web bundle compiles (HTTP 200, 4.8MB, all DSP/UI modules bundled)
-- delivered as mobile artifact
+## 빌드/배포 패턴
+- typecheck: cd packages/web && bunx tsc --noEmit
+- build: (cd packages/web && bunx vite build)
+- push: source .git-push.env → git push https://x-access-token:${GITHUB_TOKEN}@github.com/iwb0802-sketch/new-tune.git main
+- deploy: POST vercel v13/deployments (project prj_ViHYuJaYnqJ0mPwpwg8mhGmfM1vM, repoId 1310046063)
