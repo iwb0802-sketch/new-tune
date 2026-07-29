@@ -4,6 +4,7 @@ import { useTuning } from "../lib/tuning-store";
 import { CurveChart } from "../components/tuner/CurveChart";
 import { Segmented } from "../components/tuner/Segmented";
 import { getStyle } from "../lib/dsp/stretch";
+import { PianoBar } from "../components/PianoBar";
 
 export default function CurvePage() {
   const { curve, measurements, styleId, a4 } = useTuning();
@@ -39,6 +40,8 @@ export default function CurvePage() {
             : "측정값이 없어 기본 참조 커브를 표시합니다. 측정 탭에서 건반을 측정하세요."}
         </p>
       </div>
+
+      <PianoBar />
 
       <Segmented
         options={[

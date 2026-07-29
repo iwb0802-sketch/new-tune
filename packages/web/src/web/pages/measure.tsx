@@ -8,6 +8,7 @@ import { extractPartials } from "../lib/dsp/partials";
 import { fitInharmonicity } from "../lib/dsp/inharmonicity";
 import { estimateTwaFundamental } from "../lib/dsp/twa";
 import { REPRESENTATIVE_KEYS, keyToNoteName, keyToFrequency, frequencyToKey } from "../lib/dsp/notes";
+import { PianoBar } from "../components/PianoBar";
 
 const STABLE_FRAMES_TO_CAPTURE = 4;
 
@@ -136,6 +137,9 @@ export default function MeasurePage() {
           건반별 배음을 분석해 인하모니시티 계수(B)를 산출합니다. {measuredCount}/{REPRESENTATIVE_KEYS.length} 측정됨
         </p>
       </div>
+
+      {/* Active piano selector: measurements save into the selected piano */}
+      <PianoBar />
 
       {/* Key selector */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
