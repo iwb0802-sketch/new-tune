@@ -153,6 +153,8 @@ export default function TunerPage() {
   const active = running && reading != null;
   const cents = reading?.cents ?? null;
   const color = active && cents != null ? statusColor(cents, colors) : colors.mutedForeground;
+  // 매치율: 목표 센트와의 오차를 0~100%로 환산. 0센트=100%, 반음 경계(±50센트)=0%.
+  const matchRate = active && cents != null ? Math.max(0, 100 - Math.abs(cents) * 2) : null;
 
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -268,12 +270,17 @@ export default function TunerPage() {
       </div>
 
       {/* Detail rows */}
-      <div style={{ display: "flex", gap: 8 }}>
+      <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
         <Detail label="감지 주파수" value={reading ? `${reading.freq.toFixed(2)} Hz` : "— Hz"} />
         <Detail label="목표 주파수" value={reading ? `${reading.target.toFixed(2)} Hz` : "— Hz"} />
         <Detail
           label="목표 센트(ET)"
           value={reading ? `${reading.targetCents > 0 ? "+" : ""}${reading.targetCents.toFixed(1)}c` : "— c"}
+        />
+        <Detail
+          label="매치율"
+          value={matchRate != null ? `${matchRate.toFixed(0)}%` : "— %"}
+          valueColor={matchRate != null ? color : undefined}
         />
       </div>
 
@@ -375,11 +382,12 @@ function Card({
   );
 }
 
-function Detail({ label, value }: { label: string; value: string }) {
+function Detail({ label, value, valueColor }: { label: string; value: string; valueColor?: string }) {
   return (
     <div
       style={{
-        flex: 1,
+        flex: "1 1 40%",
+        minWidth: 130,
         borderRadius: 12,
         border: `1px solid ${colors.border}`,
         backgroundColor: colors.card,
@@ -390,7 +398,7 @@ function Detail({ label, value }: { label: string; value: string }) {
       }}
     >
       <span style={{ fontFamily: Fonts.sans, fontSize: 11, color: colors.mutedForeground }}>{label}</span>
-      <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 16, color: colors.foreground }}>{value}</span>
+      <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 16, color: valueColor ?? colors.foreground }}>{value}</span>
     </div>
   );
 }
