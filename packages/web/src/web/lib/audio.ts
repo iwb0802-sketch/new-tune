@@ -25,19 +25,28 @@ export function useAudioAnalyzer(onFrame: FrameCallback) {
 
   const ctxRef = useRef<AudioContext | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
   const analyserRef = useRef<AnalyserNode | null>(null);
   const rafRef = useRef<number | null>(null);
   const bufRef = useRef<Float32Array | null>(null);
+  const visRef = useRef<(() => void) | null>(null);
 
   const stop = useCallback(() => {
     if (rafRef.current != null) cancelAnimationFrame(rafRef.current);
     rafRef.current = null;
+    if (visRef.current) {
+      document.removeEventListener("visibilitychange", visRef.current);
+      visRef.current = null;
+    }
+    try { sourceRef.current?.disconnect(); } catch { /* ignore */ }
+    sourceRef.current = null;
     streamRef.current?.getTracks().forEach((t) => t.stop());
     streamRef.current = null;
-    if (ctxRef.current && ctxRef.current.state !== "closed") {
-      ctxRef.current.close().catch(() => {});
+    // iOS(홈화면 앱): ctx.close() 하면 오디오가 잠겨 재시작 시 무음이 되는 사례가 있어
+    // 닫지 않고 suspend만 한다. 다음 start()에서 resume() 해 재사용한다.
+    if (ctxRef.current && ctxRef.current.state === "running") {
+      ctxRef.current.suspend().catch(() => {});
     }
-    ctxRef.current = null;
     analyserRef.current = null;
     setRunning(false);
   }, []);
@@ -49,6 +58,20 @@ export function useAudioAnalyzer(onFrame: FrameCallback) {
       return;
     }
     try {
+      // iOS(홈화면 앱) 대응: AudioContext를 사용자 제스처 안에서 먼저 만들고 resume 한다.
+      // resume 없이 두면 standalone PWA에서 ctx가 계속 suspended → 마이크는 켜져도 무음.
+      const Ctx =
+        (globalThis as { AudioContext: typeof AudioContext }).AudioContext ||
+        (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      let ctx = ctxRef.current;
+      if (!ctx || ctx.state === "closed") {
+        ctx = new Ctx();
+        ctxRef.current = ctx;
+      }
+      if (ctx.state === "suspended") {
+        try { await ctx.resume(); } catch { /* ignore */ }
+      }
+
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -57,18 +80,29 @@ export function useAudioAnalyzer(onFrame: FrameCallback) {
         },
       });
       streamRef.current = stream;
-      const Ctx =
-        (globalThis as { AudioContext: typeof AudioContext }).AudioContext ||
-        (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new Ctx();
-      ctxRef.current = ctx;
+
+      // getUserMedia 이후 iOS가 다시 suspend 시키는 경우가 있어 한 번 더 resume.
+      if (ctx.state === "suspended") {
+        try { await ctx.resume(); } catch { /* ignore */ }
+      }
+
       const source = ctx.createMediaStreamSource(stream);
+      sourceRef.current = source;
       const analyser = ctx.createAnalyser();
       analyser.fftSize = FFT_SIZE;
       analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
       analyserRef.current = analyser;
       bufRef.current = new Float32Array(analyser.fftSize);
+
+      // 화면 복귀(백그라운드→포그라운드) 시 iOS는 ctx를 suspend 하므로 다시 resume.
+      const onVis = () => {
+        if (document.visibilityState === "visible" && ctxRef.current?.state === "suspended") {
+          ctxRef.current.resume().catch(() => {});
+        }
+      };
+      document.addEventListener("visibilitychange", onVis);
+      visRef.current = onVis;
 
       const loop = () => {
         const a = analyserRef.current;
