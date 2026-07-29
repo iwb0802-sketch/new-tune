@@ -1,13 +1,26 @@
-import { Minus, Plus, Mic, MicOff, Trash2, CircleDot, Circle } from "lucide-react";
+import { Minus, Plus, Mic, MicOff, Trash2, CircleDot, Circle, LogOut, ShieldCheck } from "lucide-react";
+import { useLocation } from "wouter";
 import { colors, Fonts } from "../lib/theme";
 import { useTuning } from "../lib/tuning-store";
 import { STRETCH_STYLES } from "../lib/dsp/stretch";
 import { isMicSupported } from "../lib/audio";
+import { useAuth } from "../hooks/useAuth";
+import { useUserRole } from "../hooks/useUserRole";
+
+const ROLE_LABEL = { free: "무료", pro: "Pro", admin: "관리자" } as const;
 
 export default function SettingsPage() {
   const { a4, setA4, styleId, setStyleId, resetAll, measurements } = useTuning();
   const measuredCount = Object.keys(measurements).length;
   const micOk = isMicSupported();
+  const [, navigate] = useLocation();
+  const { user, signOut } = useAuth();
+  const { role, isAdmin } = useUserRole(user?.id);
+
+  const handleSignOut = async () => {
+    await signOut();
+    navigate("/auth");
+  };
 
   return (
     <div style={{ padding: 20, display: "flex", flexDirection: "column", gap: 16 }}>
@@ -15,6 +28,90 @@ export default function SettingsPage() {
         <span style={{ fontFamily: Fonts.mono, fontSize: 11, letterSpacing: 2, color: colors.mutedForeground }}>CONFIGURATION</span>
         <h1 style={{ fontFamily: Fonts.sansBold, fontWeight: 700, fontSize: 24, color: colors.foreground, margin: 0 }}>설정</h1>
       </div>
+
+      {/* Account */}
+      {user && (
+        <div style={card()}>
+          <span style={{ fontFamily: Fonts.sansMedium, fontWeight: 500, fontSize: 13, color: colors.mutedForeground }}>계정</span>
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 10 }}>
+            <span
+              style={{
+                fontFamily: Fonts.sans,
+                fontSize: 14,
+                color: colors.foreground,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                flex: 1,
+              }}
+            >
+              {user.email}
+            </span>
+            <span
+              style={{
+                padding: "3px 10px",
+                borderRadius: 999,
+                fontFamily: Fonts.mono,
+                fontSize: 11,
+                color: "#FFF",
+                backgroundColor: role === "admin" ? colors.primary : role === "pro" ? colors.precision : colors.mutedForeground,
+              }}
+            >
+              {ROLE_LABEL[role]}
+            </span>
+          </div>
+
+          {isAdmin && (
+            <button
+              type="button"
+              onClick={() => navigate("/admin")}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                gap: 8,
+                paddingTop: 12,
+                paddingBottom: 12,
+                borderRadius: 12,
+                cursor: "pointer",
+                border: `1px solid ${colors.primary}`,
+                backgroundColor: colors.cardElevated,
+                color: colors.primary,
+                fontFamily: Fonts.sansMedium,
+                fontWeight: 500,
+                fontSize: 14,
+              }}
+            >
+              <ShieldCheck size={16} color={colors.primary} />
+              관리자 대시보드
+            </button>
+          )}
+
+          <button
+            type="button"
+            onClick={handleSignOut}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              gap: 8,
+              paddingTop: 12,
+              paddingBottom: 12,
+              borderRadius: 12,
+              cursor: "pointer",
+              border: `1px solid ${colors.border}`,
+              backgroundColor: "transparent",
+              color: colors.foreground,
+              fontFamily: Fonts.sansMedium,
+              fontWeight: 500,
+              fontSize: 14,
+            }}
+          >
+            <LogOut size={16} color={colors.foreground} />
+            로그아웃
+          </button>
+        </div>
+      )}
 
       {/* A4 reference */}
       <div style={card()}>
