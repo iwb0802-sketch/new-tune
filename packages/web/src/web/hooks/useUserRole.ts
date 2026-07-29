@@ -5,10 +5,12 @@ type Role = 'free' | 'pro' | 'admin'
 
 export function useUserRole(userId?: string | null) {
   const [role, setRole] = useState<Role>('free')
+  const [loading, setLoading] = useState(true)
 
   useEffect(() => {
-    if (!userId) { setRole('free'); return }
+    if (!userId) { setRole('free'); setLoading(false); return }
 
+    setLoading(true)
     supabase
       .from('user_roles')
       .select('role')
@@ -17,11 +19,13 @@ export function useUserRole(userId?: string | null) {
       .then(({ data }) => {
         if (data?.role) setRole(data.role as Role)
         else setRole('free')
+        setLoading(false)
       })
   }, [userId])
 
   return {
     role,
+    loading,
     isPro: role === 'pro' || role === 'admin',
     isAdmin: role === 'admin',
   }

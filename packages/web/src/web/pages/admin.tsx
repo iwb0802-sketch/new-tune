@@ -20,18 +20,19 @@ const ROLE_COLOR = { free: colors.mutedForeground, pro: colors.precision, admin:
 export default function AdminPage() {
   const [, navigate] = useLocation();
   const { user, loading: authLoading } = useAuth();
-  const { isAdmin } = useUserRole(user?.id);
+  const { isAdmin, loading: roleLoading } = useUserRole(user?.id);
 
   const [users, setUsers] = useState<UserInfo[]>([]);
   const [loading, setLoading] = useState(true);
   const [updating, setUpdating] = useState<string | null>(null);
 
   // 로그인/권한 가드: 미로그인은 로그인 화면, 관리자 아니면 설정으로
+  // (역할 조회가 끝나기 전엔 판단하지 않음 — 기본값 free로 잘못 튕겨나가는 것 방지)
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || roleLoading) return;
     if (!user) navigate("/auth");
     else if (!isAdmin) navigate("/settings");
-  }, [authLoading, user, isAdmin, navigate]);
+  }, [authLoading, roleLoading, user, isAdmin, navigate]);
 
   const fetchUsers = async () => {
     setLoading(true);
@@ -50,6 +51,15 @@ export default function AdminPage() {
     setUsers((prev) => prev.map((u) => (u.user_id === userId ? { ...u, role: newRole } : u)));
     setUpdating(null);
   };
+
+  if (authLoading || roleLoading) {
+    return (
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8, padding: 60, color: colors.mutedForeground, fontFamily: Fonts.sans, fontSize: 14 }}>
+        <Loader2 size={16} color={colors.mutedForeground} style={{ animation: "spin 1s linear infinite" }} />
+        불러오는 중...
+      </div>
+    );
+  }
 
   if (!isAdmin) return null;
 
