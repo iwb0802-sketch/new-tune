@@ -5,6 +5,8 @@ import { useTuning } from "../lib/tuning-store";
 import { useAudioAnalyzer } from "../lib/audio";
 import { detectPitch } from "../lib/dsp/pitch";
 import { estimateTwaFundamental } from "../lib/dsp/twa";
+import { extractPartials } from "../lib/dsp/partials";
+import { fitInharmonicity } from "../lib/dsp/inharmonicity";
 import { frequencyToKey, centsBetween, keyToNoteName } from "../lib/dsp/notes";
 import { TunerMeter } from "../components/tuner/TunerMeter";
 import { StrobeDisplay } from "../components/tuner/StrobeDisplay";
@@ -41,6 +43,11 @@ export default function TunerPage() {
   const curveRef = useRef(curve);
   curveRef.current = curve;
 
+  // 건반별 실측 인하모니시티(B) 누적값 — 프레임마다 강성모델 회귀로 측정한 B를
+  // EMA로 수렴시켜 세션 내에서 안정화한다. 커브 주입값 대신 이 실측값으로 TWA를
+  // 돌려서, 목표선(커브)은 그대로 두되 감지 주파수 해석 정밀도만 끌어올린다.
+  const bAccum = useRef<Record<number, number>>({});
+
   // Manual key override: when the low-register detection is wrong, the user can
   // pin the note with the arrows. While pinned, tuning is computed against THIS
   // key regardless of what the algorithm guesses. null = automatic detection.
@@ -67,8 +74,26 @@ export default function TunerPage() {
       // the key from the refined f1 so bass notes (large inharmonicity) don't get
       // mis-recognized by an octave. Falls back to raw f1 when partials are sparse.
       const provKey = frequencyToKey(frequency, a4);
-      const bGuess = curveRef.current[provKey - 1]?.B ?? 0;
-      const twa = estimateTwaFundamental(buffer, sampleRate, frequency, bGuess, 10);
+      const curveB = curveRef.current[provKey - 1]?.B ?? 0;
+
+      // 실측 B: 원시 f0 주변에서 배음을 뽑아 강성모델 f_k = k·f1·√(1+B·k²)을
+      // 최소제곱 회귀. 신뢰 가능한 적합(배음 4개+, R²≥0.95)만 채택하고, 건반별
+      // EMA(0.7/0.3)로 수렴시킨다. 적합 실패 프레임은 그 건반의 누적 실측값을,
+      // 그것도 없으면 커브값으로 폴백. B는 물리적으로 타당한 범위로 클램프.
+      let bForTwa = curveB;
+      const partials = extractPartials(buffer, sampleRate, frequency, 10, curveB);
+      const fit = fitInharmonicity(partials);
+      if (fit && fit.partialsUsed >= 4 && fit.rSquared >= 0.95 && fit.B > 0) {
+        const measured = Math.min(0.05, fit.B);
+        const prev = bAccum.current[provKey];
+        const smoothed = prev != null ? prev * 0.7 + measured * 0.3 : measured;
+        bAccum.current[provKey] = smoothed;
+        bForTwa = smoothed;
+      } else if (bAccum.current[provKey] != null) {
+        bForTwa = bAccum.current[provKey];
+      }
+
+      const twa = estimateTwaFundamental(buffer, sampleRate, frequency, bForTwa, 10);
       const f1 = twa ? twa.f1 : frequency;
 
       lastFreqRef.current = f1;
@@ -111,6 +136,7 @@ export default function TunerPage() {
     lastKey.current = null;
     manualKeyRef.current = null;
     setManualKey(null);
+    bAccum.current = {};
   }, [stop]);
 
   // Recompute the latched reading immediately for a pinned key using the last
