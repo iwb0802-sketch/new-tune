@@ -1,5 +1,5 @@
 import { useCallback, useRef, useState } from "react";
-import { Mic, Square } from "lucide-react";
+import { Mic, Square, ChevronLeft, ChevronRight, RotateCcw } from "lucide-react";
 import { colors, Fonts } from "../lib/theme";
 import { useTuning } from "../lib/tuning-store";
 import { useAudioAnalyzer } from "../lib/audio";
@@ -37,6 +37,13 @@ export default function TunerPage() {
   const curveRef = useRef(curve);
   curveRef.current = curve;
 
+  // Manual key override: when the low-register detection is wrong, the user can
+  // pin the note with the arrows. While pinned, tuning is computed against THIS
+  // key regardless of what the algorithm guesses. null = automatic detection.
+  const [manualKey, setManualKey] = useState<number | null>(null);
+  const manualKeyRef = useRef<number | null>(null);
+  const lastFreqRef = useRef(0);
+
   const onFrame = useCallback(
     (buffer: Float32Array, sampleRate: number) => {
       const now = Date.now();
@@ -60,7 +67,10 @@ export default function TunerPage() {
       const twa = estimateTwaFundamental(buffer, sampleRate, frequency, bGuess, 10);
       const f1 = twa ? twa.f1 : frequency;
 
-      const keyIndex = frequencyToKey(f1, a4);
+      lastFreqRef.current = f1;
+      // If the user pinned a key with the arrows, tune against that; otherwise
+      // use the auto-detected key.
+      const keyIndex = manualKeyRef.current ?? frequencyToKey(f1, a4);
       const point = curveRef.current[keyIndex - 1];
       const target = point?.fTuned ?? f1;
       const targetCents = point?.cents ?? 0;
@@ -95,7 +105,45 @@ export default function TunerPage() {
     setLive(false);
     wasLive.current = false;
     lastKey.current = null;
+    manualKeyRef.current = null;
+    setManualKey(null);
   }, [stop]);
+
+  // Recompute the latched reading immediately for a pinned key using the last
+  // detected frequency, so the meter/cents update even when the sound has faded.
+  const applyManualKey = useCallback((key: number) => {
+    const clamped = Math.min(88, Math.max(1, key));
+    manualKeyRef.current = clamped;
+    setManualKey(clamped);
+    const f = lastFreqRef.current;
+    const point = curveRef.current[clamped - 1];
+    const target = point?.fTuned ?? f;
+    const targetCents = point?.cents ?? 0;
+    const rawCents = f > 0 ? centsBetween(f, target) : 0;
+    smoothCents.current = rawCents;
+    lastKey.current = clamped;
+    setReading({
+      freq: f,
+      keyIndex: clamped,
+      note: keyToNoteName(clamped),
+      target,
+      targetCents,
+      cents: rawCents,
+    });
+  }, []);
+
+  const nudgeKey = useCallback(
+    (delta: number) => {
+      const base = manualKeyRef.current ?? lastKey.current ?? reading?.keyIndex ?? 49;
+      applyManualKey(base + delta);
+    },
+    [applyManualKey, reading],
+  );
+
+  const clearManual = useCallback(() => {
+    manualKeyRef.current = null;
+    setManualKey(null);
+  }, []);
 
   // Colored/state view stays as long as we have a latched reading and the mic runs.
   const active = running && reading != null;
@@ -118,24 +166,65 @@ export default function TunerPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
           <StrobeDisplay cents={cents} active={active} spinning={live} size={150} />
           <div style={{ flex: 1, minWidth: 0, display: "flex", flexDirection: "column", gap: 2 }}>
-            <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
-              <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 46, lineHeight: "50px", color: active ? color : colors.mutedForeground }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap" }}>
+              <button
+                type="button"
+                aria-label="이전 건반"
+                disabled={!running}
+                onClick={() => nudgeKey(-1)}
+                style={arrowBtnStyle(running)}
+              >
+                <ChevronLeft size={22} color={running ? colors.foreground : colors.mutedForeground} />
+              </button>
+              <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 46, lineHeight: "50px", minWidth: 74, textAlign: "center", color: active ? color : colors.mutedForeground }}>
                 {reading?.note ?? "—"}
               </span>
-              {active && !live && (
-                <span
+              <button
+                type="button"
+                aria-label="다음 건반"
+                disabled={!running}
+                onClick={() => nudgeKey(1)}
+                style={arrowBtnStyle(running)}
+              >
+                <ChevronRight size={22} color={running ? colors.foreground : colors.mutedForeground} />
+              </button>
+              {manualKey != null ? (
+                <button
+                  type="button"
+                  onClick={clearManual}
                   style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 4,
                     fontFamily: Fonts.mono,
                     fontSize: 9,
                     letterSpacing: 1,
-                    color: colors.mutedForeground,
-                    border: `1px solid ${colors.border}`,
+                    color: colors.warn,
+                    backgroundColor: "transparent",
+                    border: `1px solid ${colors.warn}`,
                     borderRadius: 999,
                     padding: "2px 7px",
+                    cursor: "pointer",
                   }}
                 >
-                  HOLD
-                </span>
+                  <RotateCcw size={10} color={colors.warn} /> 수동 · 자동복귀
+                </button>
+              ) : (
+                active && !live && (
+                  <span
+                    style={{
+                      fontFamily: Fonts.mono,
+                      fontSize: 9,
+                      letterSpacing: 1,
+                      color: colors.mutedForeground,
+                      border: `1px solid ${colors.border}`,
+                      borderRadius: 999,
+                      padding: "2px 7px",
+                    }}
+                  >
+                    HOLD
+                  </span>
+                )
               )}
             </div>
             <span style={{ fontFamily: Fonts.monoBold, fontWeight: 700, fontSize: 30, lineHeight: "34px", color }}>
@@ -217,6 +306,23 @@ export default function TunerPage() {
       </button>
     </div>
   );
+}
+
+function arrowBtnStyle(enabled: boolean): React.CSSProperties {
+  return {
+    display: "flex",
+    alignItems: "center",
+    justifyContent: "center",
+    width: 34,
+    height: 34,
+    flexShrink: 0,
+    borderRadius: 10,
+    border: `1px solid ${colors.border}`,
+    backgroundColor: colors.card,
+    cursor: enabled ? "pointer" : "default",
+    opacity: enabled ? 1 : 0.4,
+    padding: 0,
+  };
 }
 
 function Card({
