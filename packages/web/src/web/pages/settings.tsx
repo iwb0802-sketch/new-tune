@@ -1,4 +1,4 @@
-import { Minus, Plus, Mic, MicOff, Trash2, CircleDot, Circle, LogOut, ShieldCheck } from "lucide-react";
+import { Minus, Plus, Mic, MicOff, Trash2, CircleDot, Circle, LogOut, ShieldCheck, BookOpen, ChevronRight } from "lucide-react";
 import { useLocation } from "wouter";
 import { colors, Fonts } from "../lib/theme";
 import { useTuning } from "../lib/tuning-store";
@@ -112,6 +112,43 @@ export default function SettingsPage() {
           </button>
         </div>
       )}
+
+      {/* 사용설명서 */}
+      <button
+        type="button"
+        onClick={() => navigate("/help")}
+        style={{
+          ...card(),
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: colors.secondary,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <BookOpen size={20} color={colors.primary} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontFamily: Fonts.sansMedium, fontWeight: 500, fontSize: 14, color: colors.foreground }}>사용설명서</span>
+            <span style={{ fontFamily: Fonts.sans, fontSize: 12, color: colors.mutedForeground }}>스트로브 · 대표건반 · 조율 커브 사용법</span>
+          </div>
+        </div>
+        <ChevronRight size={18} color={colors.mutedForeground} />
+      </button>
 
       {/* A4 reference */}
       <div style={card()}>

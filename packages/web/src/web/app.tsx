@@ -8,6 +8,7 @@ import MeasurePage from "./pages/measure";
 import CurvePage from "./pages/curve";
 import SettingsPage from "./pages/settings";
 import AdminPage from "./pages/admin";
+import HelpPage from "./pages/help";
 import { Provider } from "./components/provider";
 import { Layout } from "./components/tuner/Layout";
 import { useAuth } from "./hooks/useAuth";
@@ -55,6 +56,7 @@ function App() {
             <Route path="/measure" component={MeasurePage} />
             <Route path="/curve" component={CurvePage} />
             <Route path="/settings" component={SettingsPage} />
+            <Route path="/help" component={HelpPage} />
             <Route path="/admin" component={AdminPage} />
           </Switch>
         </Layout>
