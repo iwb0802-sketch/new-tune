@@ -74,16 +74,22 @@ export default function HelpPage() {
           음마다 목표 주파수를 제시합니다.
         </p>
 
+        <p style={p}>
+          특히 <b style={{ color: colors.foreground }}>피아노 조율 자격 시험(기능사·기사) 실기</b>를 대비해 만든 앱입니다.
+          시험 실기에서 사용하는 조율 방식을 착안해 구성했고, 실기를 준비하는 학생들이 연습하고 익히기
+          편하도록 제작했습니다.
+        </p>
+
         <p style={{ ...p, marginBottom: 8 }}>화면 아래 탭으로 기능이 나뉩니다.</p>
         <FeatureRow Icon={Radio} name="튜너" desc="실시간 자동 감지. 소리를 내면 음을 인식하고 현재 오차(cents)를 보여줍니다." />
-        <FeatureRow Icon={FlaskConical} name="시험" desc="스트로브 방식 수동 조율. 음을 직접 고르고 회전 패턴으로 미세 오차를 봅니다." />
+        <FeatureRow Icon={FlaskConical} name="시험" desc="스트로브 방식 수동 조율. 음을 직접 고르고 좌우로 흐르는 무늬로 미세 오차를 봅니다." />
         <FeatureRow Icon={Activity} name="측정" desc="대표건반 10개를 측정해 그 피아노만의 조율 커브를 만듭니다." />
         <FeatureRow Icon={LineChart} name="커브" desc="완성된 88건반 조율 커브를 그래프로 확인합니다." />
         <FeatureRow Icon={SettingsIcon} name="설정" desc="기준음(A4), 스트레치 스타일, 계정/역할을 관리합니다." />
 
         <Callout>
           <b>심화</b> — 자동(튜너)은 YIN + HPS로 기본음을 잡고, 시험(스트로브)은 선택한 음의 목표 주파수에
-          위상을 맞춰 회전 무늬로 표시합니다. 둘 다 같은 조율 커브(목표값)를 기준으로 오차를 계산하므로,
+          위상을 맞춰 좌우로 흐르는 무늬로 표시합니다. 둘 다 같은 조율 커브(목표값)를 기준으로 오차를 계산하므로,
           어느 탭에서 조율해도 결과가 일관됩니다.
         </Callout>
       </Section>
@@ -91,7 +97,7 @@ export default function HelpPage() {
       {/* ── 2. 시험용(구버전) 스트로브 사용법 ──────────── */}
       <Section id="strobe" title="시험용(구버전) 스트로브 사용법" kicker="STROBE TUNER">
         <p style={p}>
-          스트로브 튜너는 회전하는 줄무늬로 음의 오차를 보여줍니다. 무늬가 <b style={{ color: colors.foreground }}>멈추면 정확</b>,
+          스트로브 튜너는 좌우로 흐르는 줄무늬로 음의 오차를 보여줍니다. 무늬가 <b style={{ color: colors.foreground }}>멈추면 정확</b>,
           오른쪽으로 흐르면 음이 높고, 왼쪽으로 흐르면 낮습니다. 구버전은 색 구분 없이 빨간색 무늬로 통일된
           오리지널 방식입니다.
         </p>
