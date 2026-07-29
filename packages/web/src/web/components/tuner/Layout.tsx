@@ -35,7 +35,7 @@ export function Layout({ children }: { children: React.ReactNode }) {
           position: "relative",
         }}
       >
-        <div style={{ flex: 1, paddingBottom: 72 }}>{children}</div>
+        <div style={{ flex: 1, paddingBottom: 72, paddingTop: "env(safe-area-inset-top)" }}>{children}</div>
 
         <nav
           style={{

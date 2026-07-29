@@ -346,8 +346,7 @@ export default function StrobeManualPage2() {
 
       {/* 헤더 */}
       <header
-        className="bg-card border-b border-border px-4 pb-3 flex items-center justify-between shadow-sm"
-        style={{ paddingTop: "calc(0.75rem + env(safe-area-inset-top))" }}
+        className="bg-card border-b border-border px-4 pb-3 pt-3 flex items-center justify-between shadow-sm"
       >
         <div className="flex items-center gap-3">
           <div className="w-8 h-8 bg-primary rounded-lg flex items-center justify-center">
