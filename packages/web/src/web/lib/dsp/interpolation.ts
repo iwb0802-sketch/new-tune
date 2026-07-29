@@ -84,20 +84,23 @@ export function interpolateBCurve(measured: MeasuredB[]): number[] {
 }
 
 /**
- * Typical piano inharmonicity curve (rough reference). B is large in the bass,
- * dips around the tenor/mid, then rises again into the high treble.
- * Values are order-of-magnitude realistic (bass ~1e-3, mid ~1.5e-4, treble ~1e-2).
+ * Default inharmonicity curve — tuned to a TYPICAL UPRIGHT piano. Uprights have
+ * shorter strings than grands, so B is noticeably higher across the board and
+ * especially in the bass (short, thick wound bass strings) and high treble,
+ * which yields a more pronounced stretch. Used as the starting curve until the
+ * user measures real keys (each measurement then overrides its neighbourhood).
+ * Values are order-of-magnitude realistic: bass ~1e-3, mid ~2e-4, treble ~1.5e-2.
  */
 export function defaultBCurve(): number[] {
   const anchors: MeasuredB[] = [
-    { keyIndex: 1, B: 0.0006 }, // A0
-    { keyIndex: 13, B: 0.00018 }, // A1
-    { keyIndex: 25, B: 0.00012 }, // A2
-    { keyIndex: 40, B: 0.00016 }, // C4
-    { keyIndex: 49, B: 0.0003 }, // A4
-    { keyIndex: 61, B: 0.0009 }, // A5
-    { keyIndex: 76, B: 0.0035 }, // C7
-    { keyIndex: 88, B: 0.012 }, // C8
+    { keyIndex: 1, B: 0.0013 }, // A0  — high bass inharmonicity (short upright bass strings)
+    { keyIndex: 13, B: 0.00032 }, // A1
+    { keyIndex: 25, B: 0.00016 }, // A2
+    { keyIndex: 40, B: 0.0002 }, // C4
+    { keyIndex: 49, B: 0.00038 }, // A4
+    { keyIndex: 61, B: 0.0012 }, // A5
+    { keyIndex: 76, B: 0.0048 }, // C7
+    { keyIndex: 88, B: 0.016 }, // C8 — strong treble stretch
   ];
   const xs = anchors.map((a) => a.keyIndex);
   const ys = anchors.map((a) => Math.log(a.B));
