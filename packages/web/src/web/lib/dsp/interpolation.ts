@@ -7,6 +7,7 @@ import { NUM_KEYS } from "./notes";
 export interface MeasuredB {
   keyIndex: number; // 1..88
   B: number;
+  rSquared?: number; // fit quality 0..1; low-quality fits are blended toward the default curve
 }
 
 /**
@@ -64,28 +65,43 @@ export function interpolateBCurve(measured: MeasuredB[]): number[] {
   if (valid.length === 0) {
     return defaultBCurve();
   }
-  if (valid.length === 1) {
-    // Shift the typical curve to pass through the single measured point.
-    const base = defaultBCurve();
-    const k = valid[0].keyIndex;
-    const scale = valid[0].B / base[k - 1];
-    return base.map((b) => b * scale);
+
+  const base = defaultBCurve();
+  const logBase = base.map((b) => Math.log(b));
+
+  // Confidence-blend each measurement toward the default curve BEFORE interpolating.
+  // The stiff-string fit returns R² (how linear the (k², (f_k/k)²) points were): a
+  // clean fit (R²→1) is fully trusted, a noisy one (low R², common in the bass where
+  // upper partials are weak/ambiguous) is pulled back toward the typical curve so a
+  // single bad reading can't drag the whole B curve — and hence the stretch — into
+  // non-physical territory. w = R²² gives ~0 trust below ≈0.4 and ~full trust above
+  // ≈0.9. Missing R² (legacy data) is treated as fully trusted.
+  const nodes = valid.map((m) => {
+    const r = m.rSquared;
+    const w = r == null ? 1 : Math.max(0, Math.min(1, r * r));
+    const logB = w * Math.log(m.B) + (1 - w) * logBase[m.keyIndex - 1];
+    return { keyIndex: m.keyIndex, logB };
+  });
+
+  if (nodes.length === 1) {
+    // Shift the typical curve to pass through the single (confidence-blended) point.
+    const k = nodes[0].keyIndex;
+    const shift = nodes[0].logB - logBase[k - 1];
+    return logBase.map((lb) => Math.exp(lb + shift));
   }
 
-  const xs = valid.map((m) => m.keyIndex);
-  const ys = valid.map((m) => Math.log(m.B));
+  const xs = nodes.map((n) => n.keyIndex);
+  const ys = nodes.map((n) => n.logB);
   const f = pchip(xs, ys);
 
   // Beyond the measured range PCHIP would flat-hold the endpoint, which is
   // physically wrong: treble inharmonicity keeps climbing steeply toward C8 and
   // the extreme bass turns back up. Instead of a flat plateau, follow the SHAPE
   // of the typical curve (its log-slope) anchored to the nearest measured point.
-  const base = defaultBCurve();
   const loKey = xs[0];
   const hiKey = xs[xs.length - 1];
   const loLogB = ys[0];
   const hiLogB = ys[ys.length - 1];
-  const logBase = base.map((b) => Math.log(b));
 
   const out: number[] = [];
   for (let key = 1; key <= NUM_KEYS; key++) {

@@ -277,6 +277,7 @@ export function TuningProvider({ children }: { children: React.ReactNode }) {
     const measured: MeasuredB[] = Object.values(measurements).map((m) => ({
       keyIndex: m.keyIndex,
       B: m.B,
+      rSquared: m.rSquared,
     }));
     return interpolateBCurve(measured);
   }, [measurements]);
