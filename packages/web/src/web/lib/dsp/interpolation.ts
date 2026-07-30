@@ -136,8 +136,9 @@ export function defaultBCurve(): number[] {
     { keyIndex: 40, B: 0.0002 }, // C4
     { keyIndex: 49, B: 0.00038 }, // A4
     { keyIndex: 61, B: 0.0012 }, // A5
-    { keyIndex: 76, B: 0.0048 }, // C7
-    { keyIndex: 88, B: 0.016 }, // C8 — strong treble stretch
+    { keyIndex: 73, B: 0.0032 }, // A6
+    { keyIndex: 82, B: 0.006 }, // F#7
+    { keyIndex: 88, B: 0.01 }, // C8 — strong treble stretch
   ];
   const xs = anchors.map((a) => a.keyIndex);
   const ys = anchors.map((a) => Math.log(a.B));
