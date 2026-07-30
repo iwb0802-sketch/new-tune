@@ -63,18 +63,9 @@ export default function MicCheckPage() {
     }
 
     try {
-      const Ctx =
-        (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ||
-        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      const ctx = new Ctx();
-      ctxRef.current = ctx;
-      log(`AudioContext 생성됨 state=${ctx.state} sampleRate=${ctx.sampleRate}`);
-
-      if (ctx.state === "suspended") {
-        await ctx.resume().catch((e) => log(`resume 실패: ${e}`));
-        log(`resume 후 state=${ctx.state}`);
-      }
-
+      // iOS(standalone PWA) 안전 순서: getUserMedia 를 "가장 먼저" 호출한다.
+      // AudioContext 를 먼저 만들어 resume 하면 InvalidStateError 가 나며 오디오 세션이
+      // 망가져 마이크 트랙이 곧바로 ended 되는 사례가 있다.
       log("getUserMedia 요청… (권한 팝업이 떠야 정상)");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
@@ -82,19 +73,33 @@ export default function MicCheckPage() {
       streamRef.current = stream;
       const track = stream.getAudioTracks()[0];
       log(`✓ 스트림 확보: track="${track?.label || "(라벨없음)"}" enabled=${track?.enabled} state=${track?.readyState}`);
+      track?.addEventListener("ended", () => log("⚠ track 'ended' 이벤트 발생 — 트랙이 중간에 종료됨"));
 
-      if (ctx.state === "suspended") {
-        await ctx.resume().catch(() => {});
-        log(`getUserMedia 후 resume → state=${ctx.state}`);
-      }
+      const Ctx =
+        (window as unknown as { AudioContext: typeof AudioContext }).AudioContext ||
+        (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new Ctx();
+      ctxRef.current = ctx;
+      log(`AudioContext 생성됨 state=${ctx.state} sampleRate=${ctx.sampleRate}`);
 
       const source = ctx.createMediaStreamSource(stream);
       const analyser = ctx.createAnalyser();
       analyser.fftSize = 2048;
       analyser.smoothingTimeConstant = 0;
       source.connect(analyser);
+      log("source→analyser 연결 완료");
+
+      // 입력 경로가 잡힌 뒤 resume (여기서는 성공해야 정상)
+      if (ctx.state === "suspended") {
+        try {
+          await ctx.resume();
+          log(`resume 후 state=${ctx.state}`);
+        } catch (e) {
+          log(`resume 실패: ${e}`);
+        }
+      }
+      log(`최종 track state=${track?.readyState}. 이제 마이크에 소리를 내보세요.`);
       const buf = new Float32Array(analyser.fftSize);
-      log(`분석기 연결 완료. 이제 마이크에 소리를 내보세요.`);
       setRunning(true);
 
       const loop = () => {

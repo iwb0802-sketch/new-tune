@@ -58,20 +58,10 @@ export function useAudioAnalyzer(onFrame: FrameCallback) {
       return;
     }
     try {
-      // iOS(홈화면 앱) 대응: AudioContext를 사용자 제스처 안에서 먼저 만들고 resume 한다.
-      // resume 없이 두면 standalone PWA에서 ctx가 계속 suspended → 마이크는 켜져도 무음.
-      const Ctx =
-        (globalThis as { AudioContext: typeof AudioContext }).AudioContext ||
-        (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
-      let ctx = ctxRef.current;
-      if (!ctx || ctx.state === "closed") {
-        ctx = new Ctx();
-        ctxRef.current = ctx;
-      }
-      if (ctx.state === "suspended") {
-        try { await ctx.resume(); } catch { /* ignore */ }
-      }
-
+      // iOS(홈화면 앱/standalone PWA) 안전 순서: getUserMedia 를 "가장 먼저" 호출한다.
+      // AudioContext 를 먼저 만들어 resume 하면 InvalidStateError(Failed to start the
+      // audio device) 가 나며 오디오 세션이 망가져 마이크 트랙이 곧바로 ended 되는
+      // 사례가 확인됨. 반드시 마이크 스트림 확보 → ctx 생성 → 연결 → 마지막에 resume.
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: {
           echoCancellation: false,
@@ -81,9 +71,13 @@ export function useAudioAnalyzer(onFrame: FrameCallback) {
       });
       streamRef.current = stream;
 
-      // getUserMedia 이후 iOS가 다시 suspend 시키는 경우가 있어 한 번 더 resume.
-      if (ctx.state === "suspended") {
-        try { await ctx.resume(); } catch { /* ignore */ }
+      const Ctx =
+        (globalThis as { AudioContext: typeof AudioContext }).AudioContext ||
+        (globalThis as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      let ctx = ctxRef.current;
+      if (!ctx || ctx.state === "closed") {
+        ctx = new Ctx();
+        ctxRef.current = ctx;
       }
 
       const source = ctx.createMediaStreamSource(stream);
@@ -94,6 +88,11 @@ export function useAudioAnalyzer(onFrame: FrameCallback) {
       source.connect(analyser);
       analyserRef.current = analyser;
       bufRef.current = new Float32Array(analyser.fftSize);
+
+      // 입력 경로가 모두 연결된 "뒤"에 resume 한다 (iOS standalone 안전 순서).
+      if (ctx.state === "suspended") {
+        try { await ctx.resume(); } catch { /* ignore */ }
+      }
 
       // 화면 복귀(백그라운드→포그라운드) 시 iOS는 ctx를 suspend 하므로 다시 resume.
       const onVis = () => {

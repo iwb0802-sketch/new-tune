@@ -227,6 +227,13 @@ export function usePitchDetector(
       const src = ctx.createMediaStreamSource(stream);
       src.connect(analyser);
 
+      // 입력 경로 연결 "뒤"에 resume 한다. iOS 홈화면 앱(standalone PWA)에서는
+      // getUserMedia 이후 만든 ctx가 suspended 상태로 남아, resume 하지 않으면
+      // 마이크는 열려도 analyser에 무음만 들어와 음 인식이 전혀 안 되는 문제가 있다.
+      if (ctx.state === "suspended") {
+        try { await ctx.resume(); } catch { /* ignore */ }
+      }
+
       setIsListening(true);
       startLoop();
     } catch (err) {
