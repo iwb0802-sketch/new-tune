@@ -13,7 +13,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  detectPitchYIN, getRMS, median,
+  detectPitchYIN, getRMS, median, goertzel,
 } from "@/lib/tuner/pitchEngine";
 
 // ── 88건반 정의 (export: useStrobeDetector에서 import) ──────────────
@@ -37,6 +37,33 @@ export function freqToCentOffset(freq: number): {
   const keyIndex = midiRound - 21;
   if (keyIndex < 0 || keyIndex > 87) return null;
   return { keyIndex, cents: (midiFloat - midiRound) * 100, note: PIANO_KEYS[keyIndex] };
+}
+
+// ── 고음 옥타브-업 보정 ───────────────────────────────────────────────
+// 고음(C6 이상)은 배음이 희박하고 기본음 주기가 매우 짧아, YIN이 기본음 주기(τ)
+// 대신 2τ(=서브하모닉) 지점에서 먼저 threshold를 통과해 정확히 한 옥타브 아래로
+// 오인식하는 구조적 문제가 있다 (예: C8 4186Hz → C7 2093Hz). 이는 노이즈와 무관하게
+// 결정적으로 발생한다.
+// → YIN 후보(fRaw)와 그 2·4배 주파수의 Goertzel magnitude를 시간버퍼에서 직접 비교해,
+//   상위 배음 후보가 확실히 더 강하면(서브하모닉 오탐) 실제 기본음으로 올려 잡는다.
+//   저음 옥타브-다운 오탐(부호 뒤집힘) 문제를 피하려고 "올려잡기"만 하며, YIN 후보가
+//   고음 영역(keyIndex >= 52, ≈C#5)일 때만 적용한다.
+function correctHighOctave(fRaw: number, buf: Float32Array, sampleRate: number): number {
+  if (fRaw <= 0) return fRaw;
+  const rough = freqToCentOffset(fRaw);
+  if (!rough || rough.keyIndex < 52) return fRaw;
+
+  const nyq = sampleRate / 2;
+  let bestF = fRaw;
+  let bestMag = goertzel(buf, sampleRate, fRaw).magnitude;
+  for (const mult of [2, 4]) {
+    const cand = fRaw * mult;
+    if (cand > nyq * 0.9) break;
+    const mag = goertzel(buf, sampleRate, cand).magnitude;
+    // 상위 배음 후보가 50% 이상 강해야 교체 (실제 기본음일 때만 우세)
+    if (mag > bestMag * 1.5) { bestMag = mag; bestF = cand; }
+  }
+  return bestF;
 }
 
 // ── 타입 ─────────────────────────────────────────────────────────────
@@ -137,7 +164,9 @@ export function usePitchDetector(
       const sampleRate = analyser.context?.sampleRate ?? 48000;
 
       // 전 건반 범위 YIN (A0=27Hz ~ C8=4186Hz)
-      const fRaw = detectPitchYIN(activeBuf, sampleRate, { fMin: 27, fMax: 5000, threshold: 0.15 });
+      const fYin = detectPitchYIN(activeBuf, sampleRate, { fMin: 27, fMax: 5000, threshold: 0.15 });
+      // 고음 서브하모닉(옥타브-다운) 오탐 보정
+      const fRaw = correctHighOctave(fYin, activeBuf, sampleRate);
 
       if (fRaw > 0) {
         // 1차 후보 (YIN 원시값)
