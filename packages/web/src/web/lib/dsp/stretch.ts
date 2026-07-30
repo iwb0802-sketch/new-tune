@@ -11,6 +11,15 @@
 // sharp treble.
 
 import { NUM_KEYS, keyToFrequency, keyToNoteName } from "./notes";
+import { defaultBCurve } from "./interpolation";
+
+// Physical envelope half-width (cents) around the default aggregate stretch curve.
+// The octave cascade amplifies noisy per-key B measurements — especially in the
+// treble — into non-physical stretch. A single bad measurement can swing C8 by
+// >100c. We bound the final curve to ±this around the default (Railsback-like)
+// curve for the SAME octave style, then enforce the monotonic bass→treble law.
+// Sane measurements sit well inside this band and pass through untouched.
+const REG_BAND_CENTS = 15;
 
 export interface StretchStyle {
   id: string;
@@ -48,8 +57,38 @@ const ANCHOR_LO = 44; // E4
 const ANCHOR_HI = 55; // D#5 — central octave pinned to ET
 
 /**
+ * Run the beatless-octave cascade for a given B curve and return per-key cents
+ * deviation from ET (index 0 = key 1). Central octave (E4–D#5) is pinned to ET.
+ */
+function cascadeCents(bCurve: number[], fEqual: number[], style: StretchStyle): number[] {
+  const fTuned: number[] = Array.from({ length: NUM_KEYS + 1 }, () => 0);
+  const B = (key: number) => bCurve[key - 1] ?? 0;
+
+  for (let key = ANCHOR_LO; key <= ANCHOR_HI; key++) fTuned[key] = fEqual[key];
+  for (let key = ANCHOR_HI + 1; key <= NUM_KEYS; key++) {
+    fTuned[key] = fTuned[key - 12] * octaveRatio(B(key - 12), B(key), style.X, style.Y);
+  }
+  for (let key = ANCHOR_LO - 1; key >= 1; key--) {
+    fTuned[key] = fTuned[key + 12] / octaveRatio(B(key), B(key + 12), style.X, style.Y);
+  }
+
+  const cents: number[] = Array.from({ length: NUM_KEYS + 1 }, () => 0);
+  for (let key = 1; key <= NUM_KEYS; key++) cents[key] = 1200 * Math.log2(fTuned[key] / fEqual[key]);
+  return cents;
+}
+
+/**
  * Compute the full 88-key stretch curve. `bCurve` must have NUM_KEYS entries
  * (index 0 = key 1). Returns per-key targets and cents deviation from ET.
+ *
+ * The raw beatless-octave cascade is physically correct but extremely sensitive
+ * to noise in the measured B curve: the treble multiplies 3–4 octave ratios, so
+ * a single bad measurement can drive C8 to ±100c. We therefore regularize the
+ * result against the default (aggregate) curve for the same octave style:
+ *   1) clamp each key to ±REG_BAND_CENTS around the default curve, and
+ *   2) enforce the monotonic bass→treble Railsback law (non-decreasing cents).
+ * Both operations are no-ops when the input is the default curve or any sane
+ * measurement set, so real measurements are preserved.
  */
 export function computeStretchCurve(
   bCurve: number[],
@@ -57,31 +96,33 @@ export function computeStretchCurve(
   style: StretchStyle,
 ): CurvePoint[] {
   const fEqual: number[] = Array.from({ length: NUM_KEYS + 1 }, () => 0);
-  const fTuned: number[] = Array.from({ length: NUM_KEYS + 1 }, () => 0);
   for (let key = 1; key <= NUM_KEYS; key++) fEqual[key] = keyToFrequency(key, a4);
 
+  const rawCents = cascadeCents(bCurve, fEqual, style);
+  const defCents = cascadeCents(defaultBCurve(), fEqual, style);
+
+  // 1) Physical band around the default curve.
+  const cents: number[] = Array.from({ length: NUM_KEYS + 1 }, () => 0);
+  for (let key = 1; key <= NUM_KEYS; key++) {
+    const lo = defCents[key] - REG_BAND_CENTS;
+    const hi = defCents[key] + REG_BAND_CENTS;
+    cents[key] = Math.min(hi, Math.max(lo, rawCents[key]));
+  }
+  // 2) Enforce monotonic non-decreasing cents (bass flattest → treble sharpest).
+  for (let key = 2; key <= NUM_KEYS; key++) {
+    if (cents[key] < cents[key - 1]) cents[key] = cents[key - 1];
+  }
+
   const B = (key: number) => bCurve[key - 1] ?? 0;
-
-  // Anchor central octave to ET
-  for (let key = ANCHOR_LO; key <= ANCHOR_HI; key++) fTuned[key] = fEqual[key];
-
-  // Cascade upward
-  for (let key = ANCHOR_HI + 1; key <= NUM_KEYS; key++) {
-    fTuned[key] = fTuned[key - 12] * octaveRatio(B(key - 12), B(key), style.X, style.Y);
-  }
-  // Cascade downward
-  for (let key = ANCHOR_LO - 1; key >= 1; key--) {
-    fTuned[key] = fTuned[key + 12] / octaveRatio(B(key), B(key + 12), style.X, style.Y);
-  }
-
   const out: CurvePoint[] = [];
   for (let key = 1; key <= NUM_KEYS; key++) {
+    const fTuned = fEqual[key] * Math.pow(2, cents[key] / 1200);
     out.push({
       keyIndex: key,
       note: keyToNoteName(key),
       fEqual: fEqual[key],
-      fTuned: fTuned[key],
-      cents: 1200 * Math.log2(fTuned[key] / fEqual[key]),
+      fTuned,
+      cents: cents[key],
       B: B(key),
     });
   }
