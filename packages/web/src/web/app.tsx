@@ -9,6 +9,7 @@ import CurvePage from "./pages/curve";
 import SettingsPage from "./pages/settings";
 import AdminPage from "./pages/admin";
 import HelpPage from "./pages/help";
+import MicCheckPage from "./pages/mic-check";
 import { Provider } from "./components/provider";
 import { Layout } from "./components/tuner/Layout";
 import { useAuth } from "./hooks/useAuth";
@@ -57,6 +58,7 @@ function App() {
             <Route path="/curve" component={CurvePage} />
             <Route path="/settings" component={SettingsPage} />
             <Route path="/help" component={HelpPage} />
+            <Route path="/mic-check" component={MicCheckPage} />
             <Route path="/admin" component={AdminPage} />
           </Switch>
         </Layout>

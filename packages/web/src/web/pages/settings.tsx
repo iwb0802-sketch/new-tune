@@ -150,6 +150,43 @@ export default function SettingsPage() {
         <ChevronRight size={18} color={colors.mutedForeground} />
       </button>
 
+      {/* 마이크 진단 (임시) */}
+      <button
+        type="button"
+        onClick={() => navigate("/mic-check")}
+        style={{
+          ...card(),
+          flexDirection: "row",
+          alignItems: "center",
+          justifyContent: "space-between",
+          gap: 12,
+          cursor: "pointer",
+          textAlign: "left",
+        }}
+      >
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <div
+            style={{
+              width: 40,
+              height: 40,
+              borderRadius: 12,
+              backgroundColor: colors.secondary,
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              flexShrink: 0,
+            }}
+          >
+            <Mic size={20} color={colors.warn} />
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+            <span style={{ fontFamily: Fonts.sansMedium, fontWeight: 500, fontSize: 14, color: colors.foreground }}>마이크 진단</span>
+            <span style={{ fontFamily: Fonts.sans, fontSize: 12, color: colors.mutedForeground }}>마이크가 안 잡힐 때 원인 확인</span>
+          </div>
+        </div>
+        <ChevronRight size={18} color={colors.mutedForeground} />
+      </button>
+
       {/* A4 reference */}
       <div style={card()}>
         <span style={{ fontFamily: Fonts.sansMedium, fontWeight: 500, fontSize: 13, color: colors.mutedForeground }}>A4 기준 피치</span>
