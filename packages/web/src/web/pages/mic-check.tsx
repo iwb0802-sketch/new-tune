@@ -63,9 +63,19 @@ export default function MicCheckPage() {
     }
 
     try {
-      // iOS(standalone PWA) 안전 순서: getUserMedia 를 "가장 먼저" 호출한다.
-      // AudioContext 를 먼저 만들어 resume 하면 InvalidStateError 가 나며 오디오 세션이
-      // 망가져 마이크 트랙이 곧바로 ended 되는 사례가 있다.
+      // iOS(standalone PWA) 안전 순서: 무음 재생으로 오디오 세션을 먼저 연 뒤
+      // getUserMedia 를 "가장 먼저" 호출한다.
+      try {
+        const warm = new Audio(
+          "data:audio/wav;base64,UklGRiQAAABXQVZFZm10IBAAAAABAAEARKwAAIhYAQACABAAZGF0YQAAAAA=",
+        );
+        warm.setAttribute("playsinline", "true");
+        (warm as unknown as { playsInline?: boolean }).playsInline = true;
+        await warm.play().catch(() => {});
+        log("무음 오디오 세션 워밍업 시도 완료");
+      } catch {
+        log("무음 워밍업 예외(무시)");
+      }
       log("getUserMedia 요청… (권한 팝업이 떠야 정상)");
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: { echoCancellation: false, noiseSuppression: false, autoGainControl: false },
