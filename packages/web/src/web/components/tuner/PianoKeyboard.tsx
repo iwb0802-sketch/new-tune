@@ -14,10 +14,13 @@ const BLACK_H = 58;
 export function PianoKeyboard({
   activeKey,
   color,
+  onKeyPress,
 }: {
   activeKey: number | null;
   color: string;
+  onKeyPress?: (key: number) => void;
 }) {
+  const clickable = typeof onKeyPress === "function";
   const scrollRef = useRef<HTMLDivElement>(null);
 
   const whites: { key: number; x: number }[] = [];
@@ -54,6 +57,9 @@ export function PianoKeyboard({
           return (
             <div
               key={key}
+              role={clickable ? "button" : undefined}
+              aria-label={clickable ? `${name} 건반 지정` : undefined}
+              onClick={clickable ? () => onKeyPress?.(key) : undefined}
               style={{
                 position: "absolute",
                 top: 0,
@@ -69,6 +75,7 @@ export function PianoKeyboard({
                 flexDirection: "column",
                 paddingBottom: 4,
                 boxSizing: "border-box",
+                cursor: clickable ? "pointer" : "default",
               }}
             >
               {isC && (
@@ -81,9 +88,13 @@ export function PianoKeyboard({
         })}
         {blacks.map(({ key, x }) => {
           const on = key === activeKey;
+          const name = keyToNoteName(key);
           return (
             <div
               key={key}
+              role={clickable ? "button" : undefined}
+              aria-label={clickable ? `${name} 건반 지정` : undefined}
+              onClick={clickable ? () => onKeyPress?.(key) : undefined}
               style={{
                 position: "absolute",
                 top: 0,
@@ -93,6 +104,7 @@ export function PianoKeyboard({
                 borderRadius: "0 0 3px 3px",
                 backgroundColor: on ? color : "#16191F",
                 zIndex: 2,
+                cursor: clickable ? "pointer" : "default",
               }}
             />
           );

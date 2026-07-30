@@ -292,7 +292,11 @@ export default function TunerPage() {
           overflow: "hidden",
         }}
       >
-        <PianoKeyboard activeKey={active ? (reading?.keyIndex ?? null) : null} color={color} />
+        <PianoKeyboard
+          activeKey={active ? (reading?.keyIndex ?? null) : null}
+          color={color}
+          onKeyPress={running ? applyManualKey : undefined}
+        />
       </div>
 
       {/* Detail rows */}
