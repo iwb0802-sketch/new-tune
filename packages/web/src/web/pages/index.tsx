@@ -181,6 +181,9 @@ export default function TunerPage() {
   const color = active && cents != null ? statusColor(cents, colors) : colors.mutedForeground;
   // 매치율: 목표 센트와의 오차를 0~100%로 환산. 0센트=100%, 반음 경계(±50센트)=0%.
   const matchRate = active && cents != null ? Math.max(0, 100 - Math.abs(cents) * 2) : null;
+  // 감지 센트: 친 음의 ET(평균율) 대비 절대 센트. 목표선(커브)의 ET대비 센트(targetCents)에
+  // 목표 대비 편차(cents)를 더하면 감지음의 ET대비 센트가 된다. (로그영역이라 가산 성립)
+  const detectedCents = active && reading && cents != null ? reading.targetCents + cents : null;
 
   return (
     <div style={{ padding: 16, display: "flex", flexDirection: "column", gap: 10 }}>
@@ -301,10 +304,13 @@ export default function TunerPage() {
 
       {/* Detail rows */}
       <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
-        <Detail label="감지 주파수" value={reading ? `${reading.freq.toFixed(2)} Hz` : "— Hz"} />
-        <Detail label="목표 주파수" value={reading ? `${reading.target.toFixed(2)} Hz` : "— Hz"} />
         <Detail
-          label="목표 센트(ET)"
+          label="감지 센트"
+          value={detectedCents != null ? `${detectedCents > 0 ? "+" : ""}${detectedCents.toFixed(1)}c` : "— c"}
+          valueColor={detectedCents != null ? color : undefined}
+        />
+        <Detail
+          label="목표 센트"
           value={reading ? `${reading.targetCents > 0 ? "+" : ""}${reading.targetCents.toFixed(1)}c` : "— c"}
         />
         <Detail
