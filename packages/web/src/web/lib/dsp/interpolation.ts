@@ -76,9 +76,30 @@ export function interpolateBCurve(measured: MeasuredB[]): number[] {
   const ys = valid.map((m) => Math.log(m.B));
   const f = pchip(xs, ys);
 
+  // Beyond the measured range PCHIP would flat-hold the endpoint, which is
+  // physically wrong: treble inharmonicity keeps climbing steeply toward C8 and
+  // the extreme bass turns back up. Instead of a flat plateau, follow the SHAPE
+  // of the typical curve (its log-slope) anchored to the nearest measured point.
+  const base = defaultBCurve();
+  const loKey = xs[0];
+  const hiKey = xs[xs.length - 1];
+  const loLogB = ys[0];
+  const hiLogB = ys[ys.length - 1];
+  const logBase = base.map((b) => Math.log(b));
+
   const out: number[] = [];
   for (let key = 1; key <= NUM_KEYS; key++) {
-    out.push(Math.exp(f(key)));
+    let logB: number;
+    if (key < loKey) {
+      // Extreme bass: shift the default curve to pass through the lowest measurement.
+      logB = loLogB + (logBase[key - 1] - logBase[loKey - 1]);
+    } else if (key > hiKey) {
+      // Treble above the top measurement: keep rising along the default slope.
+      logB = hiLogB + (logBase[key - 1] - logBase[hiKey - 1]);
+    } else {
+      logB = f(key);
+    }
+    out.push(Math.exp(logB));
   }
   return out;
 }
