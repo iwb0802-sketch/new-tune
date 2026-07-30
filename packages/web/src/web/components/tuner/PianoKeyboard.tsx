@@ -54,11 +54,12 @@ export function PianoKeyboard({
           const on = key === activeKey;
           const name = keyToNoteName(key);
           const isC = name.startsWith("C") && !name.includes("#");
+          const isRef = key === 49; // A4 기준음(A4=49) — 항상 강조 표시
           return (
             <div
               key={key}
               role={clickable ? "button" : undefined}
-              aria-label={clickable ? `${name} 건반 지정` : undefined}
+              aria-label={clickable ? `${name} 건반 지정${isRef ? " (기준음)" : ""}` : undefined}
               onClick={clickable ? () => onKeyPress?.(key) : undefined}
               style={{
                 position: "absolute",
@@ -66,9 +67,9 @@ export function PianoKeyboard({
                 left: x,
                 width: WHITE_W,
                 height: WHITE_H,
-                border: `1px solid ${colors.border}`,
+                border: isRef && !on ? `1.5px solid ${colors.primary}` : `1px solid ${colors.border}`,
                 borderRadius: "2px 2px 4px 4px",
-                backgroundColor: on ? color : "#F4F5F7",
+                backgroundColor: on ? color : isRef ? "#E3E6FF" : "#F4F5F7",
                 display: "flex",
                 justifyContent: "flex-end",
                 alignItems: "center",
@@ -78,8 +79,15 @@ export function PianoKeyboard({
                 cursor: clickable ? "pointer" : "default",
               }}
             >
-              {isC && (
-                <span style={{ fontFamily: Fonts.mono, fontSize: 7, color: on ? "#FFFFFF" : "#8A929E" }}>
+              {(isC || isRef) && (
+                <span
+                  style={{
+                    fontFamily: isRef ? Fonts.monoBold : Fonts.mono,
+                    fontWeight: isRef ? 700 : 400,
+                    fontSize: isRef ? 8 : 7,
+                    color: on ? "#FFFFFF" : isRef ? colors.primary : "#8A929E",
+                  }}
+                >
                   {name}
                 </span>
               )}
