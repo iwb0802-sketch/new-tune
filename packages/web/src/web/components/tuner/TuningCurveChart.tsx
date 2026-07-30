@@ -28,6 +28,8 @@ interface TuningCurveChartProps {
   data: ChartDataPoint[];
   activeKeyIndex?: number | null;
   showStrobeOnly?: boolean;
+  /** Optional computed stretch curve (88 cents by keyIndex 0..87) drawn as a continuous line. */
+  curveLine?: (number | null)[];
 }
 
 // 허용 범위 데이터는 tuningCurveData.ts에서 import
@@ -37,7 +39,7 @@ const A_INDICES = PIANO_KEYS
   .filter(k => k.noteName === "A")
   .map(k => k.i);
 
-export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly = false }: TuningCurveChartProps) {
+export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly = false, curveLine }: TuningCurveChartProps) {
   const SVG_W = 960;
   const SVG_H = 480;
   const PAD = { top: 30, right: 52, bottom: 110, left: 48 };
@@ -210,6 +212,22 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
     }
     return { upper: upper.join(" "), lower: lower.join(" ") };
   }, [visStart, visEnd, xOf]);
+
+  // 계산된 스트레치 커브 라인 (연속 곡선)
+  const curvePath = useMemo(() => {
+    if (!curveLine || curveLine.length === 0) return "";
+    const segs: string[] = [];
+    let started = false;
+    for (let i = 0; i <= 87; i++) {
+      const c = curveLine[i];
+      if (c == null || !Number.isFinite(c)) { started = false; continue; }
+      const x = xOf(i).toFixed(1);
+      const y = yOf(Math.max(Y_MIN, Math.min(Y_MAX, c))).toFixed(1);
+      segs.push(`${started ? "L" : "M"} ${x} ${y}`);
+      started = true;
+    }
+    return segs.join(" ");
+  }, [curveLine, xOf]);
 
   // Y축 눈금
   const yMajor = [-40,-30,-20,-10,0,10,20,30,40];
@@ -396,6 +414,13 @@ export default function TuningCurveChart({ data, activeKeyIndex, showStrobeOnly 
           {activeKeyIndex != null && (
             <line x1={xOf(activeKeyIndex)} y1={0} x2={xOf(activeKeyIndex)} y2={PH}
               stroke="#ef4444" strokeWidth={1} strokeDasharray="4,3" opacity={0.6} />
+          )}
+
+          {/* 계산된 스트레치 커브 (인디고 실선) */}
+          {curvePath && (
+            <g clipPath="url(#plotClip)">
+              <path d={curvePath} fill="none" stroke="#4f46e5" strokeWidth={2.4} strokeLinejoin="round" strokeLinecap="round" opacity={0.95} />
+            </g>
           )}
 
           {/* 자동 피치 점 (파란/빨강) - 스트로브만 보기 모드에서는 숨김 */}

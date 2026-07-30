@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { colors, Fonts } from "../lib/theme";
 import { useTuning } from "../lib/tuning-store";
 import { CurveChart } from "../components/tuner/CurveChart";
+import TuningCurveChart from "../components/tuner/TuningCurveChart";
 import { Segmented } from "../components/tuner/Segmented";
 import { getStyle } from "../lib/dsp/stretch";
 import { PianoBar } from "../components/PianoBar";
@@ -72,6 +73,33 @@ export default function CurvePage() {
             : "건반별 인하모니시티 계수 (로그 스케일). 초록 점 = 실측."}
         </span>
       </div>
+
+      {/* 시험 허용범위 대비 그래프 (스트레치 모드에서만) */}
+      {mode === "cents" && (
+        <div
+          style={{
+            borderRadius: 16,
+            border: `1px solid ${colors.border}`,
+            backgroundColor: colors.cardElevated,
+            padding: 12,
+            display: "flex",
+            flexDirection: "column",
+            gap: 8,
+          }}
+        >
+          <span style={{ fontFamily: Fonts.mono, fontSize: 11, letterSpacing: 1.5, color: colors.mutedForeground }}>시험 허용범위 대비</span>
+          <div style={{ borderRadius: 12, overflow: "hidden", backgroundColor: "white", padding: 8 }}>
+            <TuningCurveChart
+              data={[]}
+              curveLine={curve.map((p) => p.cents)}
+              activeKeyIndex={null}
+            />
+          </div>
+          <span style={{ fontFamily: Fonts.sans, fontSize: 11, textAlign: "center", lineHeight: "16px", color: colors.mutedForeground }}>
+            검은 계단선 = PT-100 시험 허용범위(상·하한), 인디고 실선 = 계산된 스트레치 커브. 커브가 밴드 안에 들어오면 합격 범위입니다. 휠·핀치로 확대.
+          </span>
+        </div>
+      )}
 
       <div style={{ display: "flex", gap: 12 }}>
         <Stat label="스타일" value={style.label.replace(" 옥타브", "")} />
