@@ -16,9 +16,8 @@
 		<!-- PWA: 홈 화면에 추가하면 앱처럼 전체화면으로 실행 -->
 		<link rel="manifest" href="/manifest.webmanifest" />
 		<link rel="apple-touch-icon" href="/apple-touch-icon.png" />
-		<meta name="mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-capable" content="yes" />
-		<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+		<!-- iOS 26 standalone PWA 는 마이크(getUserMedia) 트랙이 즉시 ended 되는 WebKit
+		     버그가 있어, 홈화면 아이콘을 Safari 컨텍스트로 열도록 standalone 을 끈다. -->
 		<meta name="apple-mobile-web-app-title" content="조율스코프" />
 		<meta name="application-name" content="조율스코프" />
 		<link rel="preconnect" href="https://fonts.googleapis.com" />
