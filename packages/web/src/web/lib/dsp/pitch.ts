@@ -128,10 +128,27 @@ export function detectPitchHps(
   return pos * binHz;
 }
 
+/** Peak magnitude within a small window (±~3%) around a target frequency. */
+function peakMagnitudeNear(mag: Float32Array, freq: number, binHz: number): number {
+  const center = freq / binHz;
+  const half = Math.max(1, Math.round((freq * 0.03) / binHz));
+  const lo = Math.max(1, Math.floor(center) - half);
+  const hi = Math.min(mag.length - 1, Math.ceil(center) + half);
+  let m = 0;
+  for (let i = lo; i <= hi; i++) if (mag[i] > m) m = mag[i];
+  return m;
+}
+
 /**
- * Combined estimate: YIN for accuracy, HPS to correct octave errors. If HPS lands
- * within ~6% of YIN's value we trust YIN; if HPS is ~half of YIN (octave-too-high
- * error), snap toward HPS.
+ * Combined estimate: YIN for accuracy, HPS to correct octave errors.
+ *
+ * When YIN locks onto a harmonic instead of the fundamental (common in the bass,
+ * where the fundamental is weak), HPS reports roughly half of YIN and we snap down.
+ * But for high notes (C6+) few real partials exist, so HPS's multiplied spectrum
+ * collapses onto noise and often reports ~half of a perfectly correct YIN reading —
+ * causing a spurious octave-DOWN error. To tell the two cases apart we verify the
+ * spectrum actually carries energy at the HPS candidate: a genuine octave-too-high
+ * error always has a real fundamental there, a spurious HPS peak does not.
  */
 export function detectPitch(signal: Float32Array, sampleRate: number): PitchResult {
   const yin = detectPitchYin(signal, sampleRate);
@@ -140,8 +157,21 @@ export function detectPitch(signal: Float32Array, sampleRate: number): PitchResu
   const hps = detectPitchHps(signal, sampleRate);
   if (hps > 0) {
     const ratio = yin.frequency / hps;
-    // YIN reported an octave (or double-octave) too high
+    const mag = magnitudeSpectrum(signal);
+    const binHz = sampleRate / nextPow2(signal.length);
+    const magHps = peakMagnitudeNear(mag, hps, binHz);
+    const magYin = peakMagnitudeNear(mag, yin.frequency, binHz);
+    // YIN reported an octave (or double-octave) too high (harmonic lock).
     if (Math.abs(ratio - 2) < 0.25 || Math.abs(ratio - 4) < 0.5) {
+      // Only trust the correction if there is real energy at the HPS fundamental.
+      if (magYin <= 0 || magHps / magYin >= 0.15) {
+        return { ...yin, frequency: hps };
+      }
+    }
+    // YIN reported an octave too low (period doubling on weak, high notes): trust
+    // HPS only when it sits an octave up AND carries clearly stronger real energy
+    // there than YIN's subharmonic — which itself has no genuine partial.
+    if (Math.abs(ratio - 0.5) < 0.06 && magYin > 0 && magHps / magYin >= 3) {
       return { ...yin, frequency: hps };
     }
   }
