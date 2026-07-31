@@ -26,16 +26,16 @@ interface Reading {
 
 const ANALYZE_INTERVAL = 110; // ms
 
-// 수동 핀 모드 전용: 감지 주파수를 핀한 건반 목표의 ±600센트(반옥타브) 안으로 접어
-// 넣는다. 저음 옥타브 오검지 등으로 감지음이 목표와 옥타브 차이가 나도, 핀한 건반
-// 기준으로 "새로" 센트를 계산하게 해준다(이전 주파수를 그대로 빼서 ±1900 같은 거대값이
-// 나오던 문제 해결). 목표와 완전히 다른 음을 치면 최대 ±600 안에서만 표시된다.
-function foldFreqToOctave(f: number, target: number): number {
-  if (f <= 0 || target <= 0) return f;
-  let x = f;
-  while (1200 * Math.log2(x / target) > 600) x /= 2;
-  while (1200 * Math.log2(x / target) < -600) x *= 2;
-  return x;
+// 센트값을 항상 -50~+50 안으로 접어 넣는다. 조율에서는 목표음 기준 ±50센트가
+// 물리적 한계(그 이상은 이미 옆 반음에 더 가깝다). 수동 핀 모드에서 옥타브 오검지나
+// 이전 프레임 잔값 때문에 ±1900 같은 거대값이 나오던 문제를, 반음(100센트) 단위로
+// 접어 넣어 해결한다. 옥타브 차이(1200=반음 12개)도 자동으로 흡수된다.
+function foldCents(cents: number): number {
+  if (!Number.isFinite(cents)) return 0;
+  let c = cents;
+  while (c > 50) c -= 100;
+  while (c < -50) c += 100;
+  return c;
 }
 
 export default function TunerPage() {
@@ -115,11 +115,9 @@ export default function TunerPage() {
       const point = curveRef.current[keyIndex - 1];
       const target = point?.fTuned ?? f1;
       const targetCents = point?.cents ?? 0;
-      // 수동 핀 모드에서는 감지 주파수를 핀한 건반 목표의 ±600센트 안으로 접어
-      // 넣어, 옥타브 오검지가 있어도 그 건반 기준으로 새로 센트를 계산한다.
-      const measuredFreq =
-        manualKeyRef.current != null ? foldFreqToOctave(f1, target) : f1;
-      const rawCents = centsBetween(measuredFreq, target);
+      // 센트는 항상 ±50 안으로 접는다. 수동 핀 모드에서 옥타브 오검지가 있어도
+      // 핀한 건반 기준으로 -50~+50 범위의 새 센트값이 나온다.
+      const rawCents = foldCents(centsBetween(f1, target));
       // Reset the smoothing when a fresh note starts (after silence or a note change)
       // so the meter snaps to the new note instead of sweeping from the old one.
       if (!wasLive.current || lastKey.current !== keyIndex) {
@@ -165,9 +163,8 @@ export default function TunerPage() {
     const point = curveRef.current[clamped - 1];
     const target = point?.fTuned ?? f;
     const targetCents = point?.cents ?? 0;
-    // 핀한 건반 목표의 ±600센트 안으로 접어 넣어 옥타브 차이를 흡수한다.
-    const measuredFreq = f > 0 ? foldFreqToOctave(f, target) : f;
-    const rawCents = f > 0 ? centsBetween(measuredFreq, target) : 0;
+    // 센트를 ±50 안으로 접어 옥타브 차이·잔값을 흡수한다.
+    const rawCents = f > 0 ? foldCents(centsBetween(f, target)) : 0;
     smoothCents.current = rawCents;
     lastKey.current = clamped;
     setReading({
