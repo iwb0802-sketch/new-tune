@@ -26,6 +26,18 @@ interface Reading {
 
 const ANALYZE_INTERVAL = 110; // ms
 
+// 수동 핀 모드 전용: 감지 주파수를 핀한 건반 목표의 ±600센트(반옥타브) 안으로 접어
+// 넣는다. 저음 옥타브 오검지 등으로 감지음이 목표와 옥타브 차이가 나도, 핀한 건반
+// 기준으로 "새로" 센트를 계산하게 해준다(이전 주파수를 그대로 빼서 ±1900 같은 거대값이
+// 나오던 문제 해결). 목표와 완전히 다른 음을 치면 최대 ±600 안에서만 표시된다.
+function foldFreqToOctave(f: number, target: number): number {
+  if (f <= 0 || target <= 0) return f;
+  let x = f;
+  while (1200 * Math.log2(x / target) > 600) x /= 2;
+  while (1200 * Math.log2(x / target) < -600) x *= 2;
+  return x;
+}
+
 export default function TunerPage() {
   const { a4, curve, styleId } = useTuning();
   const { user } = useAuth();
@@ -103,7 +115,11 @@ export default function TunerPage() {
       const point = curveRef.current[keyIndex - 1];
       const target = point?.fTuned ?? f1;
       const targetCents = point?.cents ?? 0;
-      const rawCents = centsBetween(f1, target);
+      // 수동 핀 모드에서는 감지 주파수를 핀한 건반 목표의 ±600센트 안으로 접어
+      // 넣어, 옥타브 오검지가 있어도 그 건반 기준으로 새로 센트를 계산한다.
+      const measuredFreq =
+        manualKeyRef.current != null ? foldFreqToOctave(f1, target) : f1;
+      const rawCents = centsBetween(measuredFreq, target);
       // Reset the smoothing when a fresh note starts (after silence or a note change)
       // so the meter snaps to the new note instead of sweeping from the old one.
       if (!wasLive.current || lastKey.current !== keyIndex) {
@@ -149,7 +165,9 @@ export default function TunerPage() {
     const point = curveRef.current[clamped - 1];
     const target = point?.fTuned ?? f;
     const targetCents = point?.cents ?? 0;
-    const rawCents = f > 0 ? centsBetween(f, target) : 0;
+    // 핀한 건반 목표의 ±600센트 안으로 접어 넣어 옥타브 차이를 흡수한다.
+    const measuredFreq = f > 0 ? foldFreqToOctave(f, target) : f;
+    const rawCents = f > 0 ? centsBetween(measuredFreq, target) : 0;
     smoothCents.current = rawCents;
     lastKey.current = clamped;
     setReading({
