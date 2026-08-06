@@ -30,7 +30,7 @@ import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { predictB, anomalyRatio, type BPoint } from "@/features/tuner/manual/scaleLearning";
 import {
   weightedRepeatAverage, pushSample, sampleWeight,
-  REPEAT_MIN_SAMPLES, CLUSTER_TOLERANCE,
+  REPEAT_MIN_SAMPLES,
   type CentSample, type RepeatAverageResult,
 } from "@/features/tuner/manual/repeatAverage";
 
@@ -595,7 +595,7 @@ export default function StrobeManualPage() {
                   (liveCents !== null || repeatAvg !== null) ? "hover:bg-precision/10 cursor-pointer" : "cursor-not-allowed"
                 )}
                 title={repeatAvg
-                  ? `${repeatAvg.used}회 가중평균 (편차 ${repeatAvg.spread.toFixed(1)}¢) — 눌러서 반영`
+                  ? `${repeatAvg.total}회 중 ${repeatAvg.used}회 채택 가중평균 (편차 ${repeatAvg.spread.toFixed(1)}¢, 허용 ±${repeatAvg.tolerance.toFixed(1)}¢) — 눌러서 반영`
                   : "눌러서 이 값을 바로 반영"}
               >
                 <span className="text-[9px] text-muted-foreground/60 leading-tight">
@@ -624,8 +624,8 @@ export default function StrobeManualPage() {
                   repeatAvg ? "bg-in-tune/10 text-in-tune" : "bg-precision/10 text-precision"
                 )}>
                   {repeatAvg
-                    ? `타건 ${repeatAvg.total}회 · 평균 ${repeatAvg.used}회 · 편차 ${repeatAvg.spread.toFixed(1)}¢`
-                    : `타건 ${strikeCount}/${REPEAT_MIN_SAMPLES}회 · ±${CLUSTER_TOLERANCE}¢ 모이면 평균${strikeDbg ? ` · 흔들림 ${strikeDbg.sd}¢(${strikeDbg.n})` : ""}`}
+                    ? `타건 ${repeatAvg.total}회 · 채택 ${repeatAvg.used}회 · 편차 ${repeatAvg.spread.toFixed(1)}¢ · 허용 ±${repeatAvg.tolerance.toFixed(1)}¢`
+                    : `타건 ${strikeCount}/${REPEAT_MIN_SAMPLES}회 · 비슷한 값 3회 모이면 평균${strikeDbg ? ` · 흔들림 ${strikeDbg.sd}¢(${strikeDbg.n})` : ""}`}
                 </span>
               )}
               {autoMode && (
