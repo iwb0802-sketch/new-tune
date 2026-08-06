@@ -162,21 +162,6 @@ export default function StrobeManualPage2() {
     if (r.finalCents === null) return;
     setPendingCents(r.finalCents);
     setLastEngineMeta(r);
-
-    // 이번 타건을 샘플로 누적
-    samplesRef.current = pushSample(samplesRef.current, {
-      cents: r.finalCents,
-      weight: sampleWeight(r.crossValid, r.inharmonicityConfidence),
-      t: Date.now(),
-    });
-    setStrikeCount(samplesRef.current.length);
-
-    const avg = weightedRepeatAverage(samplesRef.current);
-    setRepeatAvg(avg);
-    // 3회 이상 모여 평균이 나오면 조율값 칸에 그대로 입력 (수동 조작 전까지만)
-    if (avg && !userTouchedRef.current) {
-      setTargetOffset(avg.value);
-    }
   }, []);
 
   const {
@@ -223,6 +208,76 @@ export default function StrobeManualPage2() {
     if (isFinite(med)) setLiveCents(med);
   }, [liveCentsRaw, isListening]);
 
+  // ── 타건 감지 → 회차별 샘플 누적 ────────────────────────────────
+  // 엔진의 finalCents는 확정 조건이 엄격해서 타건마다 올라오지 않는다.
+  // 그래서 화면에 실제로 흐르고 있는 liveCentsRaw를 직접 보고 "이번 타건의 값"을
+  // 뽑는다: 값이 STRIKE_WINDOW개 연속으로 STRIKE_MAX_SD 안에 안정되면 그 중앙값을
+  // 한 회차로 기록하고, 무음(300ms) 또는 쿨다운(1.5s) 뒤에 다음 회차를 받는다.
+  const STRIKE_WINDOW = 8;    // 안정 판정에 쓰는 연속 프레임 수
+  const STRIKE_MAX_SD = 2.0;  // 이 표준편차 안이면 "안정된 타건"
+  const REARM_SILENCE_MS = 300;
+  const REARM_COOLDOWN_MS = 1500;
+
+  const strikeArmedRef = useRef(true);
+  const strikeWinRef = useRef<number[]>([]);
+  const silenceSinceRef = useRef<number | null>(null);
+  const lastSampleAtRef = useRef(0);
+
+  useEffect(() => {
+    if (!isListening) {
+      strikeArmedRef.current = true;
+      strikeWinRef.current = [];
+      silenceSinceRef.current = null;
+      return;
+    }
+    const now = Date.now();
+
+    if (liveCentsRaw === null) {
+      // 무음 구간 — 일정 시간 지나면 다음 타건 받을 준비
+      if (silenceSinceRef.current === null) silenceSinceRef.current = now;
+      else if (now - silenceSinceRef.current >= REARM_SILENCE_MS) {
+        strikeArmedRef.current = true;
+        strikeWinRef.current = [];
+      }
+      return;
+    }
+    silenceSinceRef.current = null;
+
+    // 완전 무음이 안 와도 쿨다운이 지나면 다음 회차를 받는다 (연타 대응)
+    if (!strikeArmedRef.current && now - lastSampleAtRef.current >= REARM_COOLDOWN_MS) {
+      strikeArmedRef.current = true;
+      strikeWinRef.current = [];
+    }
+    if (!strikeArmedRef.current) return;
+
+    const win = strikeWinRef.current;
+    win.push(liveCentsRaw);
+    if (win.length > STRIKE_WINDOW) win.shift();
+    if (win.length < STRIKE_WINDOW) return;
+
+    const mean = win.reduce((a, b) => a + b, 0) / win.length;
+    const sd = Math.sqrt(win.reduce((a, b) => a + (b - mean) ** 2, 0) / win.length);
+    if (sd > STRIKE_MAX_SD) return;
+
+    // 이번 타건 확정 — 중앙값을 한 회차로 기록
+    const cents = Math.round(median(win) * 10) / 10;
+    strikeArmedRef.current = false;
+    lastSampleAtRef.current = now;
+    strikeWinRef.current = [];
+
+    samplesRef.current = pushSample(samplesRef.current, {
+      cents,
+      weight: sampleWeight(engineResult?.crossValid ?? false, engineResult?.inharmonicityConfidence ?? null),
+      t: now,
+    });
+    setStrikeCount(samplesRef.current.length);
+
+    const avg = weightedRepeatAverage(samplesRef.current);
+    setRepeatAvg(avg);
+    // 3회 이상 비슷한 범위로 모이면 조율값 칸에 가중평균을 자동 입력
+    if (avg && !userTouchedRef.current) setTargetOffset(avg.value);
+  }, [liveCentsRaw, isListening, engineResult]);
+
   // ── AUTO 모드: 현재 연주 중인 음을 자동 추적해서 targetKeyIndex 갱신 ──
   const [autoMode, setAutoMode] = useState(false);
   const lastAutoKeyRef = useRef<number | null>(null);
@@ -252,6 +307,8 @@ export default function StrobeManualPage2() {
     setRepeatAvg(null);
     setStrikeCount(0);
     userTouchedRef.current = false;
+    strikeArmedRef.current = true;
+    strikeWinRef.current = [];
   }, [seq.targetKeyIndex]);
 
   const handleReset = useCallback(() => {
@@ -261,6 +318,8 @@ export default function StrobeManualPage2() {
     setRepeatAvg(null);
     setStrikeCount(0);
     userTouchedRef.current = false;
+    strikeArmedRef.current = true;
+    strikeWinRef.current = [];
   }, []);
 
   const handleNudge = useCallback((delta: number) => {
@@ -356,6 +415,8 @@ export default function StrobeManualPage2() {
     setRepeatAvg(null);
     setStrikeCount(0);
     userTouchedRef.current = false;
+    strikeArmedRef.current = true;
+    strikeWinRef.current = [];
     seq.next();
   }, [liveCents, displayReadout, seq, ensureSession, recordMeasurement, getBHint, activeProfileId, updateProfileScale]);
 
@@ -526,7 +587,7 @@ export default function StrobeManualPage2() {
                 </span>
               </button>
               {/* 타건 회차 / 평균 성립 여부 */}
-              {strikeCount > 0 && (
+              {isListening && (
                 <span className={cn(
                   "text-[9px] font-bold px-1.5 py-0.5 rounded-full tabular-nums",
                   repeatAvg ? "bg-in-tune/10 text-in-tune" : "bg-precision/10 text-precision"
