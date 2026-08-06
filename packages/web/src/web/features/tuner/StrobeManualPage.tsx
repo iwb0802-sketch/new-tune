@@ -213,31 +213,63 @@ export default function StrobeManualPage() {
   // 그래서 화면에 실제로 흐르고 있는 liveCentsRaw를 직접 보고 "이번 타건의 값"을
   // 뽑는다: 값이 STRIKE_WINDOW개 연속으로 STRIKE_MAX_SD 안에 안정되면 그 중앙값을
   // 한 회차로 기록하고, 무음(300ms) 또는 쿨다운(1.5s) 뒤에 다음 회차를 받는다.
-  const STRIKE_WINDOW = 8;    // 안정 판정에 쓰는 연속 프레임 수
-  const STRIKE_MAX_SD = 2.0;  // 이 표준편차 안이면 "안정된 타건"
-  const REARM_SILENCE_MS = 300;
-  const REARM_COOLDOWN_MS = 1500;
+  const STRIKE_WINDOW = 6;      // 안정 판정에 쓰는 연속 프레임 수
+  const STRIKE_MAX_SD = 6.0;    // 이 표준편차 안이면 "안정된 타건" (실측 신호는 원시 YIN이라 흔들림이 큼)
+  const STRIKE_MIN_FRAMES = 4;  // 폴백 기록에 필요한 최소 프레임
+  const STRIKE_TIMEOUT_MS = 600;// 안정 판정이 안 나도 이 시간 소리가 이어지면 그 구간 중앙값을 기록
+  const REARM_SILENCE_MS = 250;
+  const REARM_COOLDOWN_MS = 1200;
 
   const strikeArmedRef = useRef(true);
   const strikeWinRef = useRef<number[]>([]);
   const silenceSinceRef = useRef<number | null>(null);
   const lastSampleAtRef = useRef(0);
+  const winStartRef = useRef<number | null>(null);
+  // 진단용 — 지금 신호가 얼마나 흔들리는지 화면에 보여준다
+  const [strikeDbg, setStrikeDbg] = useState<{ n: number; sd: number } | null>(null);
 
   useEffect(() => {
     if (!isListening) {
       strikeArmedRef.current = true;
       strikeWinRef.current = [];
+      winStartRef.current = null;
       silenceSinceRef.current = null;
       return;
     }
     const now = Date.now();
 
+    // 한 회차를 확정 기록한다 (세 경로에서 공통 사용)
+    const record = (win: number[]) => {
+      const cents = Math.round(median(win) * 10) / 10;
+      strikeArmedRef.current = false;
+      lastSampleAtRef.current = now;
+      strikeWinRef.current = [];
+      winStartRef.current = null;
+
+      samplesRef.current = pushSample(samplesRef.current, {
+        cents,
+        weight: sampleWeight(engineResult?.crossValid ?? false, engineResult?.inharmonicityConfidence ?? null),
+        t: now,
+      });
+      setStrikeCount(samplesRef.current.length);
+
+      const avg = weightedRepeatAverage(samplesRef.current);
+      setRepeatAvg(avg);
+      // 3회 이상 비슷한 범위로 모이면 조율값 칸에 가중평균을 자동 입력
+      if (avg && !userTouchedRef.current) setTargetOffset(avg.value);
+    };
+
     if (liveCentsRaw === null) {
-      // 무음 구간 — 일정 시간 지나면 다음 타건 받을 준비
+      // 소리가 끝났다 — 경로 3: 아직 기록 못 한 구간이 있으면 여기서 확정한다.
+      // 흔들림이 커서 안정 판정이 안 났고 길이도 짧았던 타건을 놓치지 않기 위함.
+      if (strikeArmedRef.current && strikeWinRef.current.length >= STRIKE_MIN_FRAMES) {
+        record(strikeWinRef.current);
+      }
       if (silenceSinceRef.current === null) silenceSinceRef.current = now;
       else if (now - silenceSinceRef.current >= REARM_SILENCE_MS) {
         strikeArmedRef.current = true;
         strikeWinRef.current = [];
+        winStartRef.current = null;
       }
       return;
     }
@@ -247,35 +279,29 @@ export default function StrobeManualPage() {
     if (!strikeArmedRef.current && now - lastSampleAtRef.current >= REARM_COOLDOWN_MS) {
       strikeArmedRef.current = true;
       strikeWinRef.current = [];
+      winStartRef.current = null;
     }
     if (!strikeArmedRef.current) return;
 
     const win = strikeWinRef.current;
+    if (win.length === 0) winStartRef.current = now;
     win.push(liveCentsRaw);
     if (win.length > STRIKE_WINDOW) win.shift();
-    if (win.length < STRIKE_WINDOW) return;
 
     const mean = win.reduce((a, b) => a + b, 0) / win.length;
     const sd = Math.sqrt(win.reduce((a, b) => a + (b - mean) ** 2, 0) / win.length);
-    if (sd > STRIKE_MAX_SD) return;
+    setStrikeDbg({ n: win.length, sd: Math.round(sd * 10) / 10 });
 
-    // 이번 타건 확정 — 중앙값을 한 회차로 기록
-    const cents = Math.round(median(win) * 10) / 10;
-    strikeArmedRef.current = false;
-    lastSampleAtRef.current = now;
-    strikeWinRef.current = [];
+    // 경로 1: 값이 충분히 안정됨 → 즉시 기록
+    const stableHit = win.length >= STRIKE_WINDOW && sd <= STRIKE_MAX_SD;
+    // 경로 2: 흔들림이 커도 소리가 STRIKE_TIMEOUT_MS 이상 이어지면 그 구간 중앙값을 기록
+    const timedOut =
+      win.length >= STRIKE_MIN_FRAMES &&
+      winStartRef.current !== null &&
+      now - winStartRef.current >= STRIKE_TIMEOUT_MS;
+    if (!stableHit && !timedOut) return;
 
-    samplesRef.current = pushSample(samplesRef.current, {
-      cents,
-      weight: sampleWeight(engineResult?.crossValid ?? false, engineResult?.inharmonicityConfidence ?? null),
-      t: now,
-    });
-    setStrikeCount(samplesRef.current.length);
-
-    const avg = weightedRepeatAverage(samplesRef.current);
-    setRepeatAvg(avg);
-    // 3회 이상 비슷한 범위로 모이면 조율값 칸에 가중평균을 자동 입력
-    if (avg && !userTouchedRef.current) setTargetOffset(avg.value);
+    record(win);
   }, [liveCentsRaw, isListening, engineResult]);
 
   // ── AUTO 모드: 현재 연주 중인 음을 자동 추적해서 targetKeyIndex 갱신 ──
@@ -309,6 +335,7 @@ export default function StrobeManualPage() {
     userTouchedRef.current = false;
     strikeArmedRef.current = true;
     strikeWinRef.current = [];
+    winStartRef.current = null;
   }, [seq.targetKeyIndex]);
 
   const handleReset = useCallback(() => {
@@ -320,6 +347,7 @@ export default function StrobeManualPage() {
     userTouchedRef.current = false;
     strikeArmedRef.current = true;
     strikeWinRef.current = [];
+    winStartRef.current = null;
   }, []);
 
   const handleNudge = useCallback((delta: number) => {
@@ -417,6 +445,7 @@ export default function StrobeManualPage() {
     userTouchedRef.current = false;
     strikeArmedRef.current = true;
     strikeWinRef.current = [];
+    winStartRef.current = null;
     seq.next();
   }, [liveCents, displayReadout, seq, ensureSession, recordMeasurement, getBHint, activeProfileId, updateProfileScale]);
 
@@ -596,7 +625,7 @@ export default function StrobeManualPage() {
                 )}>
                   {repeatAvg
                     ? `타건 ${repeatAvg.total}회 · 평균 ${repeatAvg.used}회 · 편차 ${repeatAvg.spread.toFixed(1)}¢`
-                    : `타건 ${strikeCount}/${REPEAT_MIN_SAMPLES}회 · ±${CLUSTER_TOLERANCE}¢ 모이면 평균`}
+                    : `타건 ${strikeCount}/${REPEAT_MIN_SAMPLES}회 · ±${CLUSTER_TOLERANCE}¢ 모이면 평균${strikeDbg ? ` · 흔들림 ${strikeDbg.sd}¢(${strikeDbg.n})` : ""}`}
                 </span>
               )}
               {autoMode && (
