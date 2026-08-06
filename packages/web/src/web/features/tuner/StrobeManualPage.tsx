@@ -28,6 +28,11 @@ import SpectrumGraph from "@/components/tuner/SpectrumGraph";
 import TuningCurveChart from "@/components/tuner/TuningCurveChart";
 import { exportToPdf, exportToImage } from "@/lib/tuner/exportPdf";
 import { predictB, anomalyRatio, type BPoint } from "@/features/tuner/manual/scaleLearning";
+import {
+  weightedRepeatAverage, pushSample, sampleWeight,
+  REPEAT_MIN_SAMPLES, CLUSTER_TOLERANCE,
+  type CentSample, type RepeatAverageResult,
+} from "@/features/tuner/manual/repeatAverage";
 
 const toast = Object.assign(
   (msg: string, opts?: { duration?: number }) => sonnerToast(msg, opts),
@@ -144,10 +149,34 @@ export default function StrobeManualPage() {
 
   // ── 스트로브 정밀 엔진 — 복합엔진(YIN+Goertzel+HPS+TWM) + 같은 analyser 공유 ──
   const [lastEngineMeta, setLastEngineMeta] = useState<CompositeResult | null>(null);
+  // ── 반복 측정 가중평균 ────────────────────────────────────────────
+  // 같은 건반을 3회 이상 타건하면, 서로 비슷한 센트 범위(중앙값 ±4¢)에 모인
+  // 회차만 골라 신뢰도 가중평균을 내고 그 값을 조율값으로 자동 입력한다.
+  // 사용자가 +/- 로 직접 만진 뒤에는 자동 입력을 멈춘다(수동 우선).
+  const samplesRef = useRef<CentSample[]>([]);
+  const [repeatAvg, setRepeatAvg] = useState<RepeatAverageResult | null>(null);
+  const [strikeCount, setStrikeCount] = useState(0);
+  const userTouchedRef = useRef(false);
+
   const handleEngineConfirmed = useCallback((r: CompositeResult) => {
     if (r.finalCents === null) return;
     setPendingCents(r.finalCents);
     setLastEngineMeta(r);
+
+    // 이번 타건을 샘플로 누적
+    samplesRef.current = pushSample(samplesRef.current, {
+      cents: r.finalCents,
+      weight: sampleWeight(r.crossValid, r.inharmonicityConfidence),
+      t: Date.now(),
+    });
+    setStrikeCount(samplesRef.current.length);
+
+    const avg = weightedRepeatAverage(samplesRef.current);
+    setRepeatAvg(avg);
+    // 3회 이상 모여 평균이 나오면 조율값 칸에 그대로 입력 (수동 조작 전까지만)
+    if (avg && !userTouchedRef.current) {
+      setTargetOffset(avg.value);
+    }
   }, []);
 
   const {
@@ -218,14 +247,24 @@ export default function StrobeManualPage() {
     setTargetOffset(0);
     smoothWindowRef.current = [];
     setLiveCents(null);
+    // 건반이 바뀌면 반복 측정 누적도 새로 시작
+    samplesRef.current = [];
+    setRepeatAvg(null);
+    setStrikeCount(0);
+    userTouchedRef.current = false;
   }, [seq.targetKeyIndex]);
 
   const handleReset = useCallback(() => {
     setPendingCents(null);
     setTargetOffset(0);
+    samplesRef.current = [];
+    setRepeatAvg(null);
+    setStrikeCount(0);
+    userTouchedRef.current = false;
   }, []);
 
   const handleNudge = useCallback((delta: number) => {
+    userTouchedRef.current = true; // 손으로 만진 순간부터 평균 자동입력 중단
     setTargetOffset(prev => Math.round((prev + delta) * 10) / 10);
   }, []);
 
@@ -313,6 +352,10 @@ export default function StrobeManualPage() {
     );
     setPendingCents(null);
     setTargetOffset(0);
+    samplesRef.current = [];
+    setRepeatAvg(null);
+    setStrikeCount(0);
+    userTouchedRef.current = false;
     seq.next();
   }, [liveCents, displayReadout, seq, ensureSession, recordMeasurement, getBHint, activeProfileId, updateProfileScale]);
 
@@ -449,27 +492,52 @@ export default function StrobeManualPage() {
                   : "대기 중"}
               </span>
               <button
-                onClick={() => { if (liveCents !== null) setTargetOffset(Math.round(liveCents * 10) / 10); }}
-                disabled={liveCents === null}
+                onClick={() => {
+                  // 3회 이상 모여 가중평균이 나왔으면 그 값을, 아니면 실시간 예측값을 반영
+                  const v = repeatAvg ? repeatAvg.value : liveCents;
+                  if (v === null) return;
+                  userTouchedRef.current = true;
+                  setTargetOffset(Math.round(v * 10) / 10);
+                }}
+                disabled={liveCents === null && repeatAvg === null}
                 className={cn(
                   "flex items-center gap-1 text-right rounded-lg px-1.5 py-0.5 transition-colors",
-                  liveCents !== null ? "hover:bg-precision/10 cursor-pointer" : "cursor-not-allowed"
+                  (liveCents !== null || repeatAvg !== null) ? "hover:bg-precision/10 cursor-pointer" : "cursor-not-allowed"
                 )}
-                title="눌러서 이 값을 바로 반영"
+                title={repeatAvg
+                  ? `${repeatAvg.used}회 가중평균 (편차 ${repeatAvg.spread.toFixed(1)}¢) — 눌러서 반영`
+                  : "눌러서 이 값을 바로 반영"}
               >
                 <span className="text-[9px] text-muted-foreground/60 leading-tight">
-                  예측값<br />클릭 시 반영
+                  {repeatAvg
+                    ? <>{repeatAvg.used}회 평균<br />자동 반영됨</>
+                    : <>예측값<br />클릭 시 반영</>}
                 </span>
                 <span
                   className={cn(
                     "text-xs font-bold tabular-nums",
-                    liveCents !== null ? "text-precision" : "text-muted-foreground/40"
+                    repeatAvg ? "text-in-tune"
+                      : liveCents !== null ? "text-precision"
+                      : "text-muted-foreground/40"
                   )}
                   style={{ fontFamily: "'JetBrains Mono', monospace" }}
                 >
-                  {liveCents !== null ? `${liveCents > 0 ? "+" : ""}${liveCents.toFixed(1)}¢` : "—"}
+                  {repeatAvg
+                    ? `${repeatAvg.value > 0 ? "+" : ""}${repeatAvg.value.toFixed(1)}¢`
+                    : liveCents !== null ? `${liveCents > 0 ? "+" : ""}${liveCents.toFixed(1)}¢` : "—"}
                 </span>
               </button>
+              {/* 타건 회차 / 평균 성립 여부 */}
+              {strikeCount > 0 && (
+                <span className={cn(
+                  "text-[9px] font-bold px-1.5 py-0.5 rounded-full tabular-nums",
+                  repeatAvg ? "bg-in-tune/10 text-in-tune" : "bg-precision/10 text-precision"
+                )}>
+                  {repeatAvg
+                    ? `타건 ${repeatAvg.total}회 · 평균 ${repeatAvg.used}회 · 편차 ${repeatAvg.spread.toFixed(1)}¢`
+                    : `타건 ${strikeCount}/${REPEAT_MIN_SAMPLES}회 · ±${CLUSTER_TOLERANCE}¢ 모이면 평균`}
+                </span>
+              )}
               {autoMode && (
                 <span className="text-[10px] font-bold text-in-tune bg-in-tune/10 px-1.5 py-0.5 rounded-full">AUTO 추적 중</span>
               )}
