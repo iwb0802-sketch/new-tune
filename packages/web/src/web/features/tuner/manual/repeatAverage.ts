@@ -11,17 +11,19 @@
  * 나오는 건 그 피아노의 정상적인 조율 커브다. 걸러내는 대상은 "절대값이 큰 값"이 아니라
  * "그 건반의 다른 회차들과 동떨어진 값"뿐이다. 판정은 전부 중앙값 기준 상대값으로 한다.
  *
- * "비슷한 센트값 범위" 판정 (MAD 기반 자동 적응):
- *  1) 전체 샘플의 중앙값(median)을 기준점으로 잡는다 (평균과 달리 튄 값에 안 끌려감).
- *  2) 허용폭을 고정하지 않고, 그 건반에서 실제로 관측된 산포로부터 계산한다.
- *     MAD(중앙값 절대편차) × 1.4826 = 로버스트 표준편차 추정치 → 그 3배를 허용폭으로.
- *     - A0처럼 회차별로 -28/-30/-34 씩 넓게 흩어지는 저음은 허용폭이 자동으로 넓어져
- *       세 회차 모두 정상 채택된다.
- *     - 중음처럼 -30.1/-30.0/-29.9 로 촘촘하면 허용폭이 좁아져 미세한 이탈도 걸러낸다.
- *     - 허용폭은 MIN_TOLERANCE~MAX_TOLERANCE 사이로만 움직인다(과도한 축소/확대 방지).
- *  3) 중앙값에서 그 허용폭 안에 든 샘플만 채택 = 클러스터.
- *     -28/-30/-32 로 모이던 중에 갑자기 나온 +2 같은 회차는 여기서 자동 제외된다.
- *  4) 클러스터가 최소 회차(기본 3)를 못 채우면 평균을 내지 않는다(null 반환).
+ * "비슷한 센트값 범위" 판정 (간격 기반 클러스터링):
+ *  1) 샘플을 센트 오름차순으로 정렬하고, 이웃한 값 사이의 간격만 본다.
+ *  2) 연결 허용거리(link)를 그 건반의 실제 촘촘함에서 뽑는다.
+ *     이웃 간격들의 중앙값 × 3 을 쓰되 MIN_TOLERANCE~MAX_TOLERANCE 로 클램프.
+ *     - A0처럼 -34/-30/-28 로 넓게 흩어지면 link가 넓어져 세 회차 모두 한 덩어리.
+ *     - 중음처럼 -30.1/-30.0/-29.9 로 촘촘하면 link가 좁아져 미세 이탈도 끊어낸다.
+ *  3) 간격이 link보다 큰 지점에서 끊어 덩어리(클러스터)를 나눈다.
+ *     -32/-30/-28 사이에 튀어나온 +2 는 여기서 자기 혼자 덩어리가 되어 버려진다.
+ *  4) 가장 큰 덩어리를 채택한다. 단, 2등 덩어리가 1등과 같은 크기면 = 값이 두 갈래로
+ *     갈린 상태이므로 평균을 내지 않는다(null). 예전 방식(중앙값 ± 허용폭)은 이 경우
+ *     MAD가 부풀어 허용폭이 넓어지면서 0,0,10,10 → 5.0 처럼 어디에도 없는 중간값을
+ *     만들어냈다. 이제는 갈린 채로 보류하고 추가 타건을 기다린다.
+ *  5) 채택된 덩어리가 최소 회차(기본 3)를 못 채우면 역시 null.
  *     아직 값이 안 모였다는 뜻이므로 기존 단발 측정값을 그대로 쓴다.
  *
  * 가중치:
@@ -57,9 +59,7 @@ export const REPEAT_MIN_SAMPLES = 3;
 export const MIN_TOLERANCE = 3;
 /** 허용폭 상한 — 값이 아무리 흩어져도 이보다 넓게는 안 벌린다(서로 다른 음 뭉개짐 방지) */
 export const MAX_TOLERANCE = 12;
-/** MAD → 표준편차 환산 계수 */
-const MAD_TO_SIGMA = 1.4826;
-/** 허용폭 = 로버스트 시그마 × 이 배수 */
+/** 연결 허용거리 = 이웃 간격 중앙값 × 이 배수 */
 const SIGMA_K = 3;
 /** 건반당 보관하는 최대 회차 (오래된 것부터 버림) */
 export const MAX_SAMPLES = 12;
@@ -69,6 +69,16 @@ function median(xs: number[]): number {
   const s = [...xs].sort((a, b) => a - b);
   const m = s.length >> 1;
   return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+/** 선형보간 분위수 */
+function quantile(xs: number[], q: number): number {
+  if (xs.length === 0) return 0;
+  const s = [...xs].sort((a, b) => a - b);
+  const pos = (s.length - 1) * q;
+  const lo = Math.floor(pos);
+  const hi = Math.ceil(pos);
+  return lo === hi ? s[lo] : s[lo] + (s[hi] - s[lo]) * (pos - lo);
 }
 
 /**
@@ -83,21 +93,45 @@ export function sampleWeight(crossValid: boolean, inharmConfidence: number | nul
 }
 
 /**
- * 관측된 산포로부터 허용폭을 정한다 (MAD 기반, 절대 센트값과 무관).
- * 값이 넓게 흩어지는 건반은 넓게, 촘촘한 건반은 좁게 자동 적응한다.
+ * 이웃 간격들로부터 "같은 덩어리로 볼 최대 거리"를 정한다.
+ * 절대 센트값과 무관하며, 값이 넓게 흩어지는 건반은 넓게, 촘촘하면 좁게 적응한다.
+ *
+ * MAD를 쓰지 않는 이유: 값이 두 갈래(0,0,10,10)로 갈리면 MAD가 부풀어
+ * 허용폭이 넓어지고 결국 양쪽을 다 끌어안아 버린다. 이웃 간격의 중앙값은
+ * 그런 경우에도 촘촘한 쪽을 따라가므로 두 갈래를 제대로 끊어준다.
  */
 export function adaptiveTolerance(centsList: number[]): number {
-  const med = median(centsList);
-  const mad = median(centsList.map((c) => Math.abs(c - med)));
-  const sigma = mad * MAD_TO_SIGMA;
-  const tol = sigma * SIGMA_K;
-  if (!isFinite(tol) || tol <= 0) return MIN_TOLERANCE;
-  return Math.max(MIN_TOLERANCE, Math.min(MAX_TOLERANCE, tol));
+  if (centsList.length < 2) return MIN_TOLERANCE;
+  const sorted = [...centsList].sort((a, b) => a - b);
+  const gaps: number[] = [];
+  for (let i = 1; i < sorted.length; i++) gaps.push(sorted[i] - sorted[i - 1]);
+  // 간격의 하위 25% 분위수를 기준으로 삼는다. 중앙값을 쓰면 회차가 3회뿐일 때
+  // (간격 2개) 큰 간격이 절반을 차지해 기준이 부풀고, 튄 값까지 끌어안게 된다.
+  const link = quantile(gaps, 0.25) * SIGMA_K;
+  if (!isFinite(link) || link <= 0) return MIN_TOLERANCE;
+  return Math.max(MIN_TOLERANCE, Math.min(MAX_TOLERANCE, link));
+}
+
+/** 정렬 후 link보다 큰 간격에서 끊어 덩어리로 나눈다. */
+function splitClusters(samples: CentSample[], link: number): CentSample[][] {
+  const sorted = [...samples].sort((a, b) => a.cents - b.cents);
+  const out: CentSample[][] = [];
+  let cur: CentSample[] = [];
+  for (const s of sorted) {
+    if (cur.length === 0 || s.cents - cur[cur.length - 1].cents <= link) {
+      cur.push(s);
+    } else {
+      out.push(cur);
+      cur = [s];
+    }
+  }
+  if (cur.length) out.push(cur);
+  return out;
 }
 
 /**
  * 누적 샘플에서 반복 측정 가중평균을 계산한다.
- * 조건(최소 회차 + 클러스터 형성)을 못 채우면 null.
+ * 조건(최소 회차 + 단일 우세 덩어리)을 못 채우면 null.
  * tolerance를 넘기지 않으면 샘플 산포에 맞춰 자동 계산한다.
  */
 export function weightedRepeatAverage(
@@ -108,22 +142,29 @@ export function weightedRepeatAverage(
   if (samples.length < minSamples) return null;
 
   const centsAll = samples.map((s) => s.cents);
-  const med = median(centsAll);
   const tol = tolerance ?? adaptiveTolerance(centsAll);
-  const cluster = samples.filter((s) => Math.abs(s.cents - med) <= tol);
-  if (cluster.length < minSamples) return null;
+
+  const clusters = splitClusters(samples, tol).sort((a, b) => b.length - a.length);
+  const cluster = clusters[0];
+  if (!cluster || cluster.length < minSamples) return null;
+  // 값이 두 갈래로 팽팽하게 갈렸으면 평균을 내지 않고 보류한다.
+  if (clusters[1] && clusters[1].length >= cluster.length) return null;
+
+  const centsList = cluster.map((s) => s.cents);
+  const med = median(centsList);
+  // 감쇠 기준 거리: 덩어리 자체가 촘촘하면 작게, 넓으면 넓게 (0 나눗셈 방지)
+  const scale = Math.max((Math.max(...centsList) - Math.min(...centsList)) / 2, 0.5);
 
   let num = 0;
   let den = 0;
   for (const s of cluster) {
-    const d = (s.cents - med) / tol; // 0~1로 정규화된 거리
+    const d = (s.cents - med) / scale;
     const w = s.weight / (1 + d * d);
     num += s.cents * w;
     den += w;
   }
   if (den <= 0) return null;
 
-  const centsList = cluster.map((s) => s.cents);
   return {
     value: Math.round((num / den) * 10) / 10,
     used: cluster.length,
