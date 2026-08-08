@@ -61,6 +61,11 @@ export const MIN_TOLERANCE = 3;
 export const MAX_TOLERANCE = 12;
 /** 연결 허용거리 = 이웃 간격 중앙값 × 이 배수 */
 const SIGMA_K = 3;
+/**
+ * 핵(core) 판정 반경(센트). 이 반경 안에 가장 많이 모인 구간을 진짜 값으로 본다.
+ * 절대 센트값과 무관하게 "값들끼리 얼마나 뭉쳤나"만 보므로 조율 커브에는 영향 없음.
+ */
+export const TRIM_CORE_HALF = 1.5;
 /** 건반당 보관하는 최대 회차 (오래된 것부터 버림) */
 export const MAX_SAMPLES = 12;
 
@@ -130,6 +135,43 @@ function splitClusters(samples: CentSample[], link: number): CentSample[][] {
 }
 
 /**
+ * 덩어리 안에서 "촘촘한 핵(core)"만 남긴다.
+ *
+ * 간격 기반 분리(splitClusters)는 값이 1,3,5 처럼 균등한 계단으로 벌어지면
+ * 어디가 튄 값인지 판단할 근거가 없어 전부 한 덩어리로 이어버린다.
+ * 하지만 회차가 쌓여 1,1,1,3,3,5 처럼 되면 "1 근처가 진짜 값이고 5는 튄 값"이
+ * 밀도로 드러난다. 그 지점을 잡아주는 단계다.
+ *
+ * 방법: 각 샘플값을 중심으로 ±TRIM_CORE_HALF 안에 몇 개가 들어오는지 세어
+ * 가장 많이 모인 구간(최빈 구간)을 핵으로 본다. 동수면 중앙값에 가까운 쪽.
+ *
+ * 안전장치 — 다음 경우엔 아무것도 자르지 않고 원래 덩어리를 그대로 쓴다:
+ *  - 핵이 최소 회차를 못 채울 때. 예: A0의 -28/-30/-34 는 셋 다 서로 떨어져 있어
+ *    핵이 1개짜리로 잡히므로 트리밍을 건너뛴다. 저음부의 넓은 산포는 보존된다.
+ *  - 핵이 덩어리 전체와 같을 때 (자를 게 없음).
+ */
+function trimToCore(cluster: CentSample[], minSamples: number): CentSample[] {
+  if (cluster.length <= minSamples) return cluster;
+
+  const med = median(cluster.map((s) => s.cents));
+  let best: CentSample[] = [];
+  let bestDist = Infinity;
+
+  for (const c of cluster) {
+    const inCore = cluster.filter((s) => Math.abs(s.cents - c.cents) <= TRIM_CORE_HALF);
+    const dist = Math.abs(c.cents - med);
+    if (inCore.length > best.length || (inCore.length === best.length && dist < bestDist)) {
+      best = inCore;
+      bestDist = dist;
+    }
+  }
+
+  // 핵이 최소 회차를 못 채우면(=밀도가 드러나지 않음) 자르지 않는다.
+  if (best.length < minSamples || best.length >= cluster.length) return cluster;
+  return best;
+}
+
+/**
  * 누적 샘플에서 반복 측정 가중평균을 계산한다.
  * 조건(최소 회차 + 단일 우세 덩어리)을 못 채우면 null.
  * tolerance를 넘기지 않으면 샘플 산포에 맞춰 자동 계산한다.
@@ -145,10 +187,13 @@ export function weightedRepeatAverage(
   const tol = tolerance ?? adaptiveTolerance(centsAll);
 
   const clusters = splitClusters(samples, tol).sort((a, b) => b.length - a.length);
-  const cluster = clusters[0];
-  if (!cluster || cluster.length < minSamples) return null;
+  const picked = clusters[0];
+  if (!picked || picked.length < minSamples) return null;
   // 값이 두 갈래로 팽팽하게 갈렸으면 평균을 내지 않고 보류한다.
-  if (clusters[1] && clusters[1].length >= cluster.length) return null;
+  if (clusters[1] && clusters[1].length >= picked.length) return null;
+
+  // 덩어리 안에서 밀도가 드러나면(1,1,1,3,3,5 → 1 근처) 촘촘한 핵만 남긴다.
+  const cluster = trimToCore(picked, minSamples);
 
   const centsList = cluster.map((s) => s.cents);
   const med = median(centsList);
