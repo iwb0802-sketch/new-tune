@@ -93,10 +93,12 @@ export function getYINParams(zone: Zone, rms: number): YINParams {
         threshold: Math.max(0.08, Math.min(0.12, 0.15 - rms * 0.5)),
       };
     case "mid":
+      // 복합탭 원본과 동일: 넓은 탐색범위 + threshold 0.12
+      // (좁은 140~600Hz 창은 원본에 없던 제약이라 잡히는 값의 성격이 달라졌다)
       return {
-        fMin: 140,
-        fMax: 600,
-        threshold: 0.10,
+        fMin: 26,
+        fMax: 5000,
+        threshold: 0.12,
       };
     case "high":
       return {
@@ -217,9 +219,28 @@ export function goertzelTwoPassScan(
   zone: Zone
 ): GoertzelScanResult {
   // 파트별 스캔 파라미터
-  const coarseStep = zone === "low" ? 1.0 : 2.0;   // ¢
+  const coarseStep = zone === "low" ? 1.0 : zone === "mid" ? 3.0 : 2.0;   // ¢
   const fineStep   = zone === "low" ? 0.2 : 0.5;   // ¢
   const scanRange  = zone === "high" ? 80 : 50;     // ±¢
+
+  // 중음은 복합탭 원본과 동일하게 1단계 coarse 스캔(3¢)만 수행한다.
+  // (2단계 fine 스캔은 원본에 없던 단계라 값의 움직임이 달라졌다)
+  if (zone === "mid") {
+    const steps = Math.round(scanRange / coarseStep);
+    let bf = targetFreq;
+    let bm = -1;
+    for (let i = -steps; i <= steps; i++) {
+      const f = targetFreq * Math.pow(2, (i * coarseStep) / 1200);
+      const mag = goertzel(buf, sr, f).magnitude;
+      if (mag > bm) { bm = mag; bf = f; }
+    }
+    const mBase = bf / partial;
+    return {
+      bestFreq: bf,
+      bestMagnitude: bm,
+      centsOffset: Math.round(1200 * Math.log2(mBase / baseFreq) * 10) / 10,
+    };
+  }
 
   // 1단계: Coarse scan
   const coarseSteps = Math.round(scanRange / coarseStep);

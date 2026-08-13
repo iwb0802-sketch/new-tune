@@ -193,7 +193,11 @@ export function useCompositeTunerV2(
           const stabConf = getStabilityConfig(zone);
           const sr       = analyser.context.sampleRate;
 
-          if (rms < stabConf.peakThreshold * 0.3) {
+          // 중음은 예전 복합탭 원본 방식 그대로 (raw YIN, 절대 RMS 게이트, stddev 미체크)
+          const isMidLegacy = zone === "mid";
+          const rmsMin = isMidLegacy ? 0.004 : stabConf.peakThreshold * 0.3;
+
+          if (rms < rmsMin) {
             resetCapture();
             setResult(null);
             rafRef.current = requestAnimationFrame(detectExternal);
@@ -217,7 +221,9 @@ export function useCompositeTunerV2(
             const twm = refineByPartialFitV2(freqBuf, sr, size, fHps, zone, ki, bHint);
             if (twm && twm.error < 15) { fFinal = twm.f0; twmB = twm.B; twmConfidence = twm.confidence ?? null; twmNPartials = twm.nPartials ?? null; }
           }
-          const yinCents = fFinal > 0 ? yinToCents(fFinal, baseFreq, zone) : null;
+          // 중음: HPS/TWM 보정을 거치지 않은 raw YIN 사용 (TWM은 B 추정용으로만 실행)
+          const fForCents = isMidLegacy ? fYinRaw : fFinal;
+          const yinCents = fForCents > 0 ? yinToCents(fForCents, baseFreq, zone) : null;
 
           // 2. Goertzel 2단계 스캔
           const partial    = zone === "low" ? selectBestPartial(timeBuf, sr, ki, baseFreq) : targetPartial(ki);
@@ -266,7 +272,7 @@ export function useCompositeTunerV2(
             isCapturing = true;
             captureProgress = Math.min(elapsed / stabConf.durationMs, 1);
             const sd = stddev(captureBufferRef.current);
-            const isStable = sd <= stabConf.maxStddev;
+            const isStable = isMidLegacy ? true : sd <= stabConf.maxStddev;
 
             if (elapsed >= stabConf.durationMs && captureBufferRef.current.length >= stabConf.minSamples && isStable) {
               finalCents = Math.round(median(captureBufferRef.current) * 10) / 10;
@@ -373,8 +379,12 @@ export function useCompositeTunerV2(
         const rms      = getRMS(timeBuf);
         const stabConf = getStabilityConfig(zone);
 
+        // 중음은 예전 복합탭 원본 방식 그대로 (raw YIN, 절대 RMS 게이트, stddev 미체크)
+        const isMidLegacy = zone === "mid";
+        const rmsMin = isMidLegacy ? 0.004 : stabConf.peakThreshold * 0.3;
+
         // 최소 RMS 미달 → 신호 없음
-        if (rms < stabConf.peakThreshold * 0.3) {
+        if (rms < rmsMin) {
           resetCapture();
           setResult(null);
           rafRef.current = requestAnimationFrame(detect);
@@ -408,8 +418,10 @@ export function useCompositeTunerV2(
           if (twm && twm.error < 15) { fFinal = twm.f0; twmB = twm.B; twmConfidence = twm.confidence ?? null; twmNPartials = twm.nPartials ?? null; }
         }
 
-        const yinCents = fFinal > 0
-          ? yinToCents(fFinal, baseFreq, zone)
+        // 중음: HPS/TWM 보정을 거치지 않은 raw YIN 사용 (TWM은 B 추정용으로만 실행)
+        const fForCents = isMidLegacy ? fYinRaw : fFinal;
+        const yinCents = fForCents > 0
+          ? yinToCents(fForCents, baseFreq, zone)
           : null;
 
         // ────────────────────────────────────────────────────────────
@@ -486,7 +498,7 @@ export function useCompositeTunerV2(
 
           // 센트 표준편차 체크 — 흔들리는 동안은 확정하지 않음
           const sd = stddev(captureBufferRef.current);
-          const isStable = sd <= stabConf.maxStddev;
+          const isStable = isMidLegacy ? true : sd <= stabConf.maxStddev;
 
           if (
             elapsed >= stabConf.durationMs &&
