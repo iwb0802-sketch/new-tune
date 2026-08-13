@@ -171,8 +171,17 @@ export default function StrobeManualPage2() {
     error: engineError,
   } = useCompositeTunerV2(seq.targetKeyIndex, handleEngineConfirmed, pitchDetector.analyserRef, getBHint);
 
-  // 실시간 흐름용 — 교차검증 전이라도 즉시 표시 (YIN 우선, 없으면 Goertzel)
-  const liveCentsRaw   = engineResult?.yinCents ?? engineResult?.goertzelCents ?? null;
+  // ── 실시간 흐름용 센트값 (스트로브 구동원) ──────────────────────────
+  // 중음(mid, 27~51번 건반)만 엔진의 교차검증 융합값(liveCents)을 쓴다.
+  //   liveCents = crossValid 통과 시 YIN 0.40 : Goertzel 0.60 가중융합,
+  //               실패 시 Goertzel 단독으로 자동 폴백.
+  //   중음은 Goertzel 2단계 스캔이 가장 정밀한 구간이라 융합 이득이 크다.
+  // 저음/고음은 현재 인식률이 이미 좋으므로 기존 동작(YIN 우선) 그대로 유지한다.
+  const liveCentsRaw = (() => {
+    if (!engineResult) return null;
+    if (engineResult.zone === "mid") return engineResult.liveCents;
+    return engineResult.yinCents ?? engineResult.goertzelCents ?? null;
+  })();
   const strobeCents    = pendingCents; // 자동 확정된 값 (하위 호환용 별칭)
   const isCapturing    = engineResult?.isCapturing ?? false;
   const captureProgress = engineResult?.captureProgress ?? 0;
