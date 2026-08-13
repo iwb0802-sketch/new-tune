@@ -158,11 +158,44 @@ export default function StrobeManualPage2() {
   const [strikeCount, setStrikeCount] = useState(0);
   const userTouchedRef = useRef(false);
 
+  // ── 중음(mid) 확정값 경로 ────────────────────────────────────────
+  // 중음은 값 인식이 안정적이므로, 프레임 단위 실시간값 대신
+  // 엔진이 안정화로 "확정"한 값(finalCents)을 스트로브 구동값으로 쓰고,
+  // 그 확정값 1건 = 반복측정 1회차로 누적한다.
+  //  - 확정 전(첫 900ms)에는 확정값이 없으므로 기존 실시간 경로로 폴백한다.
+  //  - 확정값은 다음 확정이 올 때까지 유지되고, 스트로브에는 부드럽게 보간해 흘린다.
+  const midConfirmedRef = useRef<number | null>(null);
+  const [midConfirmed, setMidConfirmed] = useState<number | null>(null);
+  const lastConfirmAtRef = useRef(0);
+  const MID_CONFIRM_MIN_GAP_MS = 300; // 같은 확정 이벤트 중복 누적 방지
+
+  // 한 회차 기록 (타건 감지 경로 / 중음 확정 경로 공용)
+  const recordSample = useCallback((cents: number, weight: number, now: number) => {
+    samplesRef.current = pushSample(samplesRef.current, { cents, weight, t: now });
+    setStrikeCount(samplesRef.current.length);
+    const avg = weightedRepeatAverage(samplesRef.current);
+    setRepeatAvg(avg);
+    if (avg && !userTouchedRef.current) setTargetOffset(avg.value);
+  }, []);
+
   const handleEngineConfirmed = useCallback((r: CompositeResult) => {
     if (r.finalCents === null) return;
     setPendingCents(r.finalCents);
     setLastEngineMeta(r);
-  }, []);
+
+    if (r.zone !== "mid") return;
+    const now = Date.now();
+    if (now - lastConfirmAtRef.current < MID_CONFIRM_MIN_GAP_MS) return;
+    lastConfirmAtRef.current = now;
+    // 확정값을 스트로브 구동 목표로 세우고, 같은 값을 회차로도 누적
+    midConfirmedRef.current = r.finalCents;
+    setMidConfirmed(r.finalCents);
+    recordSample(
+      Math.round(r.finalCents * 10) / 10,
+      sampleWeight(r.crossValid, r.inharmonicityConfidence ?? null),
+      now,
+    );
+  }, [recordSample]);
 
   const {
     result: engineResult,
@@ -222,6 +255,8 @@ export default function StrobeManualPage2() {
       setLiveCents(null);
       return;
     }
+    // 중음에서 확정값이 한 번이라도 나왔다면 스트로브는 확정값 보간이 담당한다
+    if (engineResult?.zone === "mid" && midConfirmedRef.current !== null) return;
     if (liveCentsRaw === null) {
       // 무음 구간 — 마지막 값을 그대로 유지 (+/- 로 계속 확인 가능하도록)
       return;
@@ -231,7 +266,27 @@ export default function StrobeManualPage2() {
     smoothWindowRef.current = smoothWindowRef.current.filter(s => now - s.t <= SMOOTH_WINDOW_MS);
     const med = Math.round(median(smoothWindowRef.current.map(s => s.c)) * 10) / 10;
     if (isFinite(med)) setLiveCents(med);
-  }, [liveCentsRaw, isListening]);
+  }, [liveCentsRaw, isListening, engineResult?.zone]);
+
+  // ── 중음 확정값 → 스트로브 부드러운 보간 ─────────────────────────
+  // 확정값이 뚝 바뀌면 스트로브가 튀므로, 표시값을 확정값 쪽으로 지수 보간해
+  // 흐르듯 이동시킨다. 다음 확정이 오기 전까지는 확정값에 머문다.
+  const MID_EASE_MS = 60;
+  const MID_EASE_ALPHA = 0.25;
+  useEffect(() => {
+    if (!isListening || midConfirmed === null) return;
+    const id = setInterval(() => {
+      setLiveCents(prev => {
+        const target = midConfirmedRef.current;
+        if (target === null) return prev;
+        if (prev === null) return Math.round(target * 10) / 10;
+        const next = prev + (target - prev) * MID_EASE_ALPHA;
+        if (Math.abs(target - prev) < 0.05) return Math.round(target * 10) / 10;
+        return Math.round(next * 10) / 10;
+      });
+    }, MID_EASE_MS);
+    return () => clearInterval(id);
+  }, [isListening, midConfirmed]);
 
   // ── 타건 감지 → 회차별 샘플 누적 ────────────────────────────────
   // 엔진의 finalCents는 확정 조건이 엄격해서 타건마다 올라오지 않는다.
@@ -261,6 +316,9 @@ export default function StrobeManualPage2() {
       silenceSinceRef.current = null;
       return;
     }
+    // 중음에서 확정값이 나오기 시작하면 회차 누적은 확정값 경로가 담당한다.
+    // (확정이 한 번도 안 나온 동안은 이 경로가 폴백으로 계속 동작)
+    if (engineResult?.zone === "mid" && midConfirmedRef.current !== null) return;
     const now = Date.now();
 
     // 한 회차를 확정 기록한다 (세 경로에서 공통 사용)
@@ -271,12 +329,11 @@ export default function StrobeManualPage2() {
       strikeWinRef.current = [];
       winStartRef.current = null;
 
-      samplesRef.current = pushSample(samplesRef.current, {
+      recordSample(
         cents,
-        weight: sampleWeight(engineResult?.crossValid ?? false, engineResult?.inharmonicityConfidence ?? null),
-        t: now,
-      });
-      setStrikeCount(samplesRef.current.length);
+        sampleWeight(engineResult?.crossValid ?? false, engineResult?.inharmonicityConfidence ?? null),
+        now,
+      );
 
       const avg = weightedRepeatAverage(samplesRef.current);
       setRepeatAvg(avg);
@@ -327,7 +384,7 @@ export default function StrobeManualPage2() {
     if (!stableHit && !timedOut) return;
 
     record(win);
-  }, [liveCentsRaw, isListening, engineResult]);
+  }, [liveCentsRaw, isListening, engineResult, recordSample]);
 
   // ── AUTO 모드: 현재 연주 중인 음을 자동 추적해서 targetKeyIndex 갱신 ──
   const [autoMode, setAutoMode] = useState(false);
@@ -361,6 +418,9 @@ export default function StrobeManualPage2() {
     strikeArmedRef.current = true;
     strikeWinRef.current = [];
     winStartRef.current = null;
+    midConfirmedRef.current = null;
+    setMidConfirmed(null);
+    lastConfirmAtRef.current = 0;
   }, [seq.targetKeyIndex]);
 
   // 재측정 — 이 건반의 누적 회차·평균·오프셋·스무딩을 모두 비우고 처음부터 다시 측정한다.
@@ -382,6 +442,9 @@ export default function StrobeManualPage2() {
     smoothWindowRef.current = [];
     setLiveCents(null);
     lastCrossOkAtRef.current = 0;
+    midConfirmedRef.current = null;
+    setMidConfirmed(null);
+    lastConfirmAtRef.current = 0;
   }, []);
 
   const handleResetClick = useCallback(() => {
