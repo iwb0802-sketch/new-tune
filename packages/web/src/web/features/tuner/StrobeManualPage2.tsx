@@ -159,13 +159,10 @@ export default function StrobeManualPage2() {
   const userTouchedRef = useRef(false);
 
   // ── 중음(mid) 확정값 경로 ────────────────────────────────────────
-  // 중음은 값 인식이 안정적이므로, 프레임 단위 실시간값 대신
-  // 엔진이 안정화로 "확정"한 값(finalCents)을 스트로브 구동값으로 쓰고,
-  // 그 확정값 1건 = 반복측정 1회차로 누적한다.
-  //  - 확정 전(첫 900ms)에는 확정값이 없으므로 기존 실시간 경로로 폴백한다.
-  //  - 확정값은 다음 확정이 올 때까지 유지되고, 스트로브에는 부드럽게 보간해 흘린다.
+  // 복합탭 원본과 동일: 확정값(finalCents)은 스트로브 구동에 쓰지 않는다.
+  // 스트로브는 항상 실시간값이 흐르고, 확정값은 "회차 1건"으로만 누적한다.
+  //  - 확정이 한 번도 안 나온 동안은 기존 타건감지 경로가 폴백으로 회차를 쌓는다.
   const midConfirmedRef = useRef<number | null>(null);
-  const [midConfirmed, setMidConfirmed] = useState<number | null>(null);
   const lastConfirmAtRef = useRef(0);
   const MID_CONFIRM_MIN_GAP_MS = 300; // 같은 확정 이벤트 중복 누적 방지
 
@@ -187,9 +184,8 @@ export default function StrobeManualPage2() {
     const now = Date.now();
     if (now - lastConfirmAtRef.current < MID_CONFIRM_MIN_GAP_MS) return;
     lastConfirmAtRef.current = now;
-    // 확정값을 스트로브 구동 목표로 세우고, 같은 값을 회차로도 누적
+    // 확정값은 회차로만 누적 (스트로브 구동값은 실시간값 그대로)
     midConfirmedRef.current = r.finalCents;
-    setMidConfirmed(r.finalCents);
     recordSample(
       Math.round(r.finalCents * 10) / 10,
       sampleWeight(r.crossValid, r.inharmonicityConfidence ?? null),
@@ -205,30 +201,18 @@ export default function StrobeManualPage2() {
   } = useCompositeTunerV2(seq.targetKeyIndex, handleEngineConfirmed, pitchDetector.analyserRef, getBHint);
 
   // ── 실시간 흐름용 센트값 (스트로브 구동원) ──────────────────────────
-  // 중음(mid, 27~51번 건반): 교차검증을 통과한 프레임만 스트로브에 반영한다.
-  //   - crossValid = |yinCents - goertzelCents| 가 임계 이내 + 신호 양호
-  //   - 통과 프레임의 liveCents = YIN 0.40 : Goertzel 0.60 가중융합값
-  //   - 실패 프레임은 null 을 내보내 스무딩 창에 들어가지 않게 하고,
-  //     스무딩 로직이 마지막 통과값을 그대로 유지한다(= 검증 안 된 값이 안 섞임).
-  //   - 다만 검증 실패가 MID_CROSS_HOLD_MS 이상 이어지면 스트로브가 얼어붙으므로
-  //     그때는 Goertzel 단독값으로 폴백해 흐름을 잃지 않는다.
+  // 중음(mid, 27~51번 건반): 예전 복합탭(CompositePage)과 동일한 방식으로 흘린다.
+  //   - 엔진의 liveCents 를 프레임마다 그대로 쓴다 (교차검증 통과 시 YIN·Goertzel 단순평균,
+  //     실패하면 그 프레임부터 즉시 Goertzel 단독값 — 값을 얼려두거나 홀드하지 않는다).
+  //   - 확정값(finalCents)은 표시/회차기록 전용이며 스트로브 구동에는 쓰지 않는다.
+  //     확정값으로 구동하면 계단식으로 튀어서 복합탭의 흐르는 느낌이 사라진다.
   // 저음/고음: 현재 인식률이 이미 좋으므로 기존 동작(YIN 우선) 그대로 유지.
-  const MID_CROSS_HOLD_MS = 700;
-  const lastCrossOkAtRef = useRef(0);
-
   const liveCentsRaw = useMemo(() => {
     if (!engineResult) return null;
     if (engineResult.zone !== "mid") {
       return engineResult.yinCents ?? engineResult.goertzelCents ?? null;
     }
-    const now = Date.now();
-    if (engineResult.crossValid) {
-      lastCrossOkAtRef.current = now;
-      return engineResult.liveCents;
-    }
-    // 검증 실패 — 유지 한도를 넘기지 않았으면 값을 내보내지 않는다(마지막 통과값 유지)
-    if (now - lastCrossOkAtRef.current <= MID_CROSS_HOLD_MS) return null;
-    return engineResult.goertzelCents;
+    return engineResult.liveCents;
   }, [engineResult]);
 
   const strobeCents    = pendingCents; // 자동 확정된 값 (하위 호환용 별칭)
@@ -255,10 +239,14 @@ export default function StrobeManualPage2() {
       setLiveCents(null);
       return;
     }
-    // 중음에서 확정값이 한 번이라도 나왔다면 스트로브는 확정값 보간이 담당한다
-    if (engineResult?.zone === "mid" && midConfirmedRef.current !== null) return;
     if (liveCentsRaw === null) {
       // 무음 구간 — 마지막 값을 그대로 유지 (+/- 로 계속 확인 가능하도록)
+      return;
+    }
+    // 중음: 복합탭 원본과 동일하게 프레임값을 그대로 흘린다 (중앙값 창을 거치지 않음)
+    if (engineResult?.zone === "mid") {
+      smoothWindowRef.current = [];
+      setLiveCents(Math.round(liveCentsRaw * 10) / 10);
       return;
     }
     const now = Date.now();
@@ -267,26 +255,6 @@ export default function StrobeManualPage2() {
     const med = Math.round(median(smoothWindowRef.current.map(s => s.c)) * 10) / 10;
     if (isFinite(med)) setLiveCents(med);
   }, [liveCentsRaw, isListening, engineResult?.zone]);
-
-  // ── 중음 확정값 → 스트로브 부드러운 보간 ─────────────────────────
-  // 확정값이 뚝 바뀌면 스트로브가 튀므로, 표시값을 확정값 쪽으로 지수 보간해
-  // 흐르듯 이동시킨다. 다음 확정이 오기 전까지는 확정값에 머문다.
-  const MID_EASE_MS = 60;
-  const MID_EASE_ALPHA = 0.25;
-  useEffect(() => {
-    if (!isListening || midConfirmed === null) return;
-    const id = setInterval(() => {
-      setLiveCents(prev => {
-        const target = midConfirmedRef.current;
-        if (target === null) return prev;
-        if (prev === null) return Math.round(target * 10) / 10;
-        const next = prev + (target - prev) * MID_EASE_ALPHA;
-        if (Math.abs(target - prev) < 0.05) return Math.round(target * 10) / 10;
-        return Math.round(next * 10) / 10;
-      });
-    }, MID_EASE_MS);
-    return () => clearInterval(id);
-  }, [isListening, midConfirmed]);
 
   // ── 타건 감지 → 회차별 샘플 누적 ────────────────────────────────
   // 엔진의 finalCents는 확정 조건이 엄격해서 타건마다 올라오지 않는다.
@@ -419,7 +387,6 @@ export default function StrobeManualPage2() {
     strikeWinRef.current = [];
     winStartRef.current = null;
     midConfirmedRef.current = null;
-    setMidConfirmed(null);
     lastConfirmAtRef.current = 0;
   }, [seq.targetKeyIndex]);
 
@@ -441,9 +408,7 @@ export default function StrobeManualPage2() {
     // 실시간 표시값과 스무딩 창도 비워서 이전 타건 잔상이 안 남게 한다
     smoothWindowRef.current = [];
     setLiveCents(null);
-    lastCrossOkAtRef.current = 0;
     midConfirmedRef.current = null;
-    setMidConfirmed(null);
     lastConfirmAtRef.current = 0;
   }, []);
 

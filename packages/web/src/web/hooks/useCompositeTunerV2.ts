@@ -60,7 +60,7 @@ export interface UseCompositeTunerReturn {
 // 교차검증 허용 편차 (파트별)
 const CROSS_THRESH: Record<string, number> = {
   low:  15,  // 저음: 배음 혼재로 YIN 오차 큼 → 관대하게
-  mid:   6,  // 중음: 가장 안정적 → 엄격하게
+  mid:   8,  // 중음: 복합탭 원본 임계값(8¢)
   high: 12,  // 고음: decay 빠름 → 중간
 };
 
@@ -88,7 +88,7 @@ function weightedCents(
 
   const weights = {
     low:  { yin: 0.35, goertzel: 0.65 }, // 저음: Goertzel 신뢰 더 높음
-    mid:  { yin: 0.40, goertzel: 0.60 }, // 중음: Goertzel 2단계 스캔이 정밀
+    mid:  { yin: 0.50, goertzel: 0.50 }, // 중음: 복합탭 원본과 동일한 단순 평균
     high: { yin: 0.55, goertzel: 0.45 }, // 고음: YIN이 상대적으로 안정적
   };
   const w = weights[zone];
