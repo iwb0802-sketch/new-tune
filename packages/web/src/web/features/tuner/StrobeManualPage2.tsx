@@ -172,16 +172,32 @@ export default function StrobeManualPage2() {
   } = useCompositeTunerV2(seq.targetKeyIndex, handleEngineConfirmed, pitchDetector.analyserRef, getBHint);
 
   // ── 실시간 흐름용 센트값 (스트로브 구동원) ──────────────────────────
-  // 중음(mid, 27~51번 건반)만 엔진의 교차검증 융합값(liveCents)을 쓴다.
-  //   liveCents = crossValid 통과 시 YIN 0.40 : Goertzel 0.60 가중융합,
-  //               실패 시 Goertzel 단독으로 자동 폴백.
-  //   중음은 Goertzel 2단계 스캔이 가장 정밀한 구간이라 융합 이득이 크다.
-  // 저음/고음은 현재 인식률이 이미 좋으므로 기존 동작(YIN 우선) 그대로 유지한다.
-  const liveCentsRaw = (() => {
+  // 중음(mid, 27~51번 건반): 교차검증을 통과한 프레임만 스트로브에 반영한다.
+  //   - crossValid = |yinCents - goertzelCents| 가 임계 이내 + 신호 양호
+  //   - 통과 프레임의 liveCents = YIN 0.40 : Goertzel 0.60 가중융합값
+  //   - 실패 프레임은 null 을 내보내 스무딩 창에 들어가지 않게 하고,
+  //     스무딩 로직이 마지막 통과값을 그대로 유지한다(= 검증 안 된 값이 안 섞임).
+  //   - 다만 검증 실패가 MID_CROSS_HOLD_MS 이상 이어지면 스트로브가 얼어붙으므로
+  //     그때는 Goertzel 단독값으로 폴백해 흐름을 잃지 않는다.
+  // 저음/고음: 현재 인식률이 이미 좋으므로 기존 동작(YIN 우선) 그대로 유지.
+  const MID_CROSS_HOLD_MS = 700;
+  const lastCrossOkAtRef = useRef(0);
+
+  const liveCentsRaw = useMemo(() => {
     if (!engineResult) return null;
-    if (engineResult.zone === "mid") return engineResult.liveCents;
-    return engineResult.yinCents ?? engineResult.goertzelCents ?? null;
-  })();
+    if (engineResult.zone !== "mid") {
+      return engineResult.yinCents ?? engineResult.goertzelCents ?? null;
+    }
+    const now = Date.now();
+    if (engineResult.crossValid) {
+      lastCrossOkAtRef.current = now;
+      return engineResult.liveCents;
+    }
+    // 검증 실패 — 유지 한도를 넘기지 않았으면 값을 내보내지 않는다(마지막 통과값 유지)
+    if (now - lastCrossOkAtRef.current <= MID_CROSS_HOLD_MS) return null;
+    return engineResult.goertzelCents;
+  }, [engineResult]);
+
   const strobeCents    = pendingCents; // 자동 확정된 값 (하위 호환용 별칭)
   const isCapturing    = engineResult?.isCapturing ?? false;
   const captureProgress = engineResult?.captureProgress ?? 0;
