@@ -363,17 +363,31 @@ export default function StrobeManualPage2() {
     winStartRef.current = null;
   }, [seq.targetKeyIndex]);
 
+  // 재측정 — 이 건반의 누적 회차·평균·오프셋·스무딩을 모두 비우고 처음부터 다시 측정한다.
+  // (건반은 그대로 두므로, 값이 이상하게 잡혔을 때 바로 다시 칠 수 있다)
   const handleReset = useCallback(() => {
     setPendingCents(null);
     setTargetOffset(0);
     samplesRef.current = [];
     setRepeatAvg(null);
     setStrikeCount(0);
+    setStrikeDbg(null);
     userTouchedRef.current = false;
     strikeArmedRef.current = true;
     strikeWinRef.current = [];
     winStartRef.current = null;
+    silenceSinceRef.current = null;
+    lastSampleAtRef.current = 0;
+    // 실시간 표시값과 스무딩 창도 비워서 이전 타건 잔상이 안 남게 한다
+    smoothWindowRef.current = [];
+    setLiveCents(null);
+    lastCrossOkAtRef.current = 0;
   }, []);
+
+  const handleResetClick = useCallback(() => {
+    handleReset();
+    toast("재측정 — 누적 회차와 평균을 비웠습니다", { duration: 1500 });
+  }, [handleReset]);
 
   const handleNudge = useCallback((delta: number) => {
     userTouchedRef.current = true; // 손으로 만진 순간부터 평균 자동입력 중단
@@ -679,6 +693,20 @@ export default function StrobeManualPage2() {
               {liveCents !== null
                 ? `✓ 확정  ${displayReadout > 0 ? "+" : ""}${displayReadout.toFixed(1)}¢`
                 : "측정 후 확정"}
+            </button>
+            {/* 재측정 — 이 건반의 누적 회차/평균/오프셋을 비우고 처음부터 다시 측정 */}
+            <button
+              onClick={handleResetClick}
+              disabled={strikeCount === 0 && repeatAvg === null && targetOffset === 0 && liveCents === null}
+              title="이 건반의 타건 누적·평균·오프셋을 비우고 다시 측정합니다"
+              className={cn(
+                "px-4 py-3 rounded-xl font-bold text-sm transition-all active:scale-[0.98] shrink-0",
+                (strikeCount > 0 || repeatAvg !== null || targetOffset !== 0 || liveCents !== null)
+                  ? "bg-muted text-foreground hover:bg-off/10 hover:text-off border border-border"
+                  : "bg-muted text-muted-foreground/40 cursor-not-allowed border border-border/50"
+              )}
+            >
+              ↺ 재측정
             </button>
           </div>
         </div>
