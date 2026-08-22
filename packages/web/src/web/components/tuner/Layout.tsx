@@ -1,10 +1,11 @@
 import { Link, useLocation } from "wouter";
-import { Radio, FlaskConical, Activity, LineChart, Settings } from "lucide-react";
+import { Radio, FlaskConical, Sparkles, Activity, LineChart, Settings } from "lucide-react";
 import { colors, Fonts } from "../../lib/theme";
 
 const TABS = [
   { path: "/", label: "튜너", Icon: Radio },
   { path: "/manual", label: "시험", Icon: FlaskConical },
+  { path: "/new-tab", label: "신규탭", Icon: Sparkles },
   { path: "/measure", label: "측정", Icon: Activity },
   { path: "/curve", label: "커브", Icon: LineChart },
   { path: "/settings", label: "설정", Icon: Settings },

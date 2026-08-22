@@ -3,6 +3,7 @@ import { Toaster } from "sonner";
 import Index from "./pages/index";
 import StrobeManualPage from "./features/tuner/StrobeManualPage";
 import StrobeManualPage2 from "./features/tuner/StrobeManualPage2";
+import NewTabPage from "./features/tuner/newtab/NewTabPage";
 import AuthPage from "./features/tuner/AuthPage";
 import MeasurePage from "./pages/measure";
 import CurvePage from "./pages/curve";
@@ -53,6 +54,7 @@ function App() {
             <Route path="/" component={Index} />
             <Route path="/manual" component={StrobeManualPage} />
             <Route path="/strobe-manual-2" component={StrobeManualPage2} />
+            <Route path="/new-tab" component={NewTabPage} />
             <Route path="/auth" component={AuthPage} />
             <Route path="/measure" component={MeasurePage} />
             <Route path="/curve" component={CurvePage} />
