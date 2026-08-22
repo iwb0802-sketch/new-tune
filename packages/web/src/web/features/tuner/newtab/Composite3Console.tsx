@@ -8,10 +8,11 @@ import TuningCurveChart from "@/components/tuner/TuningCurveChart";
 
 type ChartData = React.ComponentProps<typeof TuningCurveChart>["data"];
 
-export interface Composite3CentsRow extends ChartData[number] {
+// babel의 TS 파서가 `interface ... extends X[number]` 형태를 못 읽어 교차 타입으로 표현한다.
+export type Composite3CentsRow = ChartData[number] & {
   frequency: number;
   measuredAt: number | null;
-}
+};
 
 interface Composite3ConsoleProps {
   seq: UseManualSequenceReturn;
